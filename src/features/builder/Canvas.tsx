@@ -1,18 +1,22 @@
 import { useState, type DragEvent, type ReactNode } from 'react';
 import { EIP_BY_TYPE } from '../../core/eip';
-import { isKnown, type Branch, type CamelFile, type KnownStep, type OnException, type Route, type Step } from '../../core/model';
+import { isKnown, joinPath, type Branch, type CamelFile, type KnownStep, type OnException, type RestDef, type Route, type Step } from '../../core/model';
 import type { Severity } from '../../core/validate';
 
-export type DropPayload = { kind: 'eip'; type: string } | { kind: 'component'; uri: string } | { kind: 'move'; id: string };
+export type DropPayload = { kind: 'eip'; type: string } | { kind: 'component'; uri: string } | { kind: 'move'; id: string } | { kind: 'snippet'; id: string };
 
 export const DND_NEW = 'application/x-cas-new';
 export const DND_MOVE = 'application/x-cas-move';
 
 export interface CanvasHandlers {
   selected?: string;
+  /** Additional selected steps (Shift/Ctrl+click). */
+  multi?: Set<string>;
+  collapsed?: Set<string>;
+  onToggleCollapse?(id: string): void;
   status: Record<string, Severity>;
   readOnly?: boolean;
-  onSelect(id: string | undefined): void;
+  onSelect(id: string | undefined, additive?: boolean): void;
   onDrop(containerId: string, index: number, payload: DropPayload): void;
   onQuickAdd(containerId: string, index: number, anchor: DOMRect): void;
   onAddBranch(stepId: string, kind: Branch['kind']): void;
@@ -126,11 +130,37 @@ function Status({ sev }: { sev?: Severity }) {
   );
 }
 
+const isSel = (h: CanvasHandlers, id: string) => h.selected === id || !!h.multi?.has(id);
+
+function Collapse({ h, id, count }: { h: CanvasHandlers; id: string; count: number }) {
+  if (!h.onToggleCollapse) return null;
+  const c = h.collapsed?.has(id);
+  return (
+    <button
+      className="collapse-btn"
+      aria-label={c ? 'Expand block' : 'Collapse block'}
+      aria-expanded={!c}
+      title={c ? 'Expand' : 'Collapse'}
+      onClick={(e) => {
+        e.stopPropagation();
+        h.onToggleCollapse!(id);
+      }}
+    >
+      {c ? `▸ ${count}` : '▾'}
+    </button>
+  );
+}
+
+function countSteps(s: KnownStep): number {
+  const n = (list: Step[] | undefined): number => (list ?? []).reduce((a, x) => a + 1 + (isKnown(x) ? countSteps(x) : 0), 0);
+  return n(s.steps) + (s.branches ?? []).reduce((a, b) => a + n(b.steps), 0);
+}
+
 function StepView({ h, step }: { h: CanvasHandlers; step: Step }) {
-  const sel = h.selected === step.id;
-  const select = (e: { stopPropagation(): void }) => {
+  const sel = isSel(h, step.id);
+  const select = (e: { stopPropagation(): void; shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => {
     e.stopPropagation();
-    h.onSelect(step.id);
+    h.onSelect(step.id, !!(e.shiftKey || e.ctrlKey || e.metaKey));
   };
   if (!isKnown(step)) {
     return (
@@ -159,8 +189,38 @@ function StepView({ h, step }: { h: CanvasHandlers; step: Step }) {
       <b>{def.label}</b>
       <small>{subtitle(step)}</small>
       <Status sev={sev} />
+      <Collapse h={h} id={step.id} count={countSteps(step)} />
     </div>
   );
+  if (h.collapsed?.has(step.id)) {
+    return <div className={`box collapsed ${def.container === 'choice' ? 'choice' : def.container === 'doTry' || def.container === 'circuitBreaker' ? 'dotry' : ''} ${sel ? 'selected' : ''}`}>{head}</div>;
+  }
+  if (def.container === 'circuitBreaker') {
+    const hasFallback = (step.branches ?? []).some((b) => b.kind === 'onFallback');
+    return (
+      <div className={`box dotry ${sel ? 'selected' : ''}`}>
+        {head}
+        <div className="branches">
+          <div className="branch">
+            <span className="branch-label" onClick={select}>
+              protected
+            </span>
+            <StepList h={h} containerId={step.id} steps={step.steps ?? []} />
+          </div>
+          {(step.branches ?? []).map((b) => (
+            <BranchRow key={b.id} h={h} branch={b} />
+          ))}
+        </div>
+        {!h.readOnly && !hasFallback && (
+          <div className="box-actions">
+            <button className="tinybtn" onClick={() => h.onAddBranch(step.id, 'onFallback')}>
+              + onFallback
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
   if (def.container === 'choice') {
     const hasOtherwise = (step.branches ?? []).some((b) => b.kind === 'otherwise');
     return (
@@ -231,8 +291,9 @@ function BranchRow({ h, branch }: { h: CanvasHandlers; branch: Branch }) {
     branch.kind === 'when' ? `when ${branch.expression?.expression ?? ''}` :
     branch.kind === 'otherwise' ? 'otherwise' :
     branch.kind === 'doCatch' ? `catch ${(branch.exceptions ?? []).map((e) => e.split('.').pop()).join(', ')}` :
+    branch.kind === 'onFallback' ? 'fallback' :
     'finally';
-  const cls = branch.kind === 'doCatch' ? 'catch' : branch.kind === 'doFinally' ? 'finally' : '';
+  const cls = branch.kind === 'doCatch' ? 'catch' : branch.kind === 'doFinally' || branch.kind === 'onFallback' ? 'finally' : '';
   return (
     <div className="branch">
       <span
@@ -251,6 +312,35 @@ function BranchRow({ h, branch }: { h: CanvasHandlers; branch: Branch }) {
       </span>
       <StepList h={h} containerId={branch.id} steps={branch.steps} />
     </div>
+  );
+}
+
+function RestLane({ h, rest }: { h: CanvasHandlers; rest: RestDef }) {
+  const sel = h.selected === rest.id;
+  const pick = (e: { stopPropagation(): void }) => {
+    e.stopPropagation();
+    h.onSelect(rest.id);
+  };
+  return (
+    <section className="lane" aria-label={`REST ${rest.path}`}>
+      <button className={`lane-head ${sel ? 'selected' : ''}`} onClick={pick}>
+        <span className="badge rest">rest</span>
+        <b>{rest.path}</b>
+        {rest.description && <span>{rest.description}</span>}
+        <Status sev={h.status[rest.id]} />
+      </button>
+      <div className={`rest-ops ${sel ? 'selected' : ''}`} onClick={pick} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && pick(e)}>
+        {rest.verbs.length === 0 && <span className="muted">No operations — select to add one</span>}
+        {rest.verbs.map((v) => (
+          <div key={v.id} className="rest-op">
+            <span className={`verb verb-${v.method}`}>{v.method.toUpperCase()}</span>
+            <code>{joinPath(rest.path, v.path)}</code>
+            <span className="muted">→</span>
+            <code className="to">{v.to || '(no target)'}</code>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -309,6 +399,9 @@ export function FlowCanvas({ file, h, zoom = 1 }: { file: CamelFile; h: CanvasHa
     <div className="canvas-inner" style={{ transform: zoom !== 1 ? `scale(${zoom})` : undefined }} onClick={() => h.onSelect(undefined)}>
       {file.onExceptions.map((ex) => (
         <ExceptionLane key={ex.id} h={h} ex={ex} />
+      ))}
+      {(file.rests ?? []).map((r) => (
+        <RestLane key={r.id} h={h} rest={r} />
       ))}
       {file.routes.map((r) => (
         <RouteLane key={r.id} h={h} route={r} />

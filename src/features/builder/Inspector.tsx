@@ -3,7 +3,7 @@ import { COMPONENTS, COMPONENT_BY_SCHEME, docsUrl, parseUri, buildUri, setUriPar
 import type { NodeRef } from '../../core/edit';
 import { EIP_BY_TYPE, type PropDef } from '../../core/eip';
 import { jsonPath } from '../../core/jsonpath';
-import { LANGUAGES, isKnown, type Branch, type Expression, type KnownStep, type OnException, type Route } from '../../core/model';
+import { HTTP_VERBS, LANGUAGES, isKnown, uid, type Branch, type Expression, type HttpVerb, type KnownStep, type OnException, type RestDef, type RestVerb, type Route } from '../../core/model';
 import type { Issue } from '../../core/validate';
 import YAML from 'yaml';
 
@@ -15,9 +15,23 @@ interface Props {
   mutate: Mutate;
   onDelete(id: string): void;
   onDuplicate(id: string): void;
+  onSaveSnippet(id: string): void;
+  multiCount?: number;
 }
 
-export function Inspector({ node, issues, mutate, onDelete, onDuplicate }: Props) {
+export function Inspector({ node, issues, mutate, onDelete, onDuplicate, onSaveSnippet, multiCount = 0 }: Props) {
+  if (multiCount > 1) {
+    return (
+      <div className="inspector">
+        <Head icon="▣" title={`${multiCount} steps selected`} text="Delete, copy (Ctrl C) or cut (Ctrl X) them together. Click without Shift to select a single step." />
+        <div className="inspector-actions">
+          <button className="tinybtn" onClick={() => node && onDelete(node.node.id)} style={{ color: 'var(--red)' }}>
+            Delete selected <span className="kbd">Del</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (!node) {
     return (
       <div className="inspector">
@@ -46,6 +60,8 @@ export function Inspector({ node, issues, mutate, onDelete, onDuplicate }: Props
       return <RouteInspector route={node.node} mutate={mutate} onDelete={onDelete} issues={issueList} />;
     case 'onException':
       return <ExceptionInspector ex={node.node} mutate={mutate} onDelete={onDelete} issues={issueList} />;
+    case 'rest':
+      return <RestInspector rest={node.node} mutate={mutate} onDelete={onDelete} issues={issueList} />;
     case 'branch':
       return <BranchInspector branch={node.node} mutate={mutate} onDelete={onDelete} issues={issueList} />;
     case 'step': {
@@ -63,7 +79,7 @@ export function Inspector({ node, issues, mutate, onDelete, onDuplicate }: Props
           </div>
         );
       }
-      return <StepInspector key={s.id} step={s} mutate={mutate} onDelete={onDelete} onDuplicate={onDuplicate} issues={issueList} />;
+      return <StepInspector key={s.id} step={s} mutate={mutate} onDelete={onDelete} onDuplicate={onDuplicate} onSaveSnippet={onSaveSnippet} issues={issueList} />;
     }
   }
 }
@@ -290,7 +306,7 @@ export function EndpointEditor({ uri, onChange, role }: { uri: string; onChange(
 
 // ---------------------------------------------------------------- per kind
 
-function StepInspector({ step, mutate, onDelete, onDuplicate, issues }: { step: KnownStep; mutate: Mutate; onDelete(id: string): void; onDuplicate(id: string): void; issues: ReactNode }) {
+function StepInspector({ step, mutate, onDelete, onDuplicate, onSaveSnippet, issues }: { step: KnownStep; mutate: Mutate; onDelete(id: string): void; onDuplicate(id: string): void; onSaveSnippet(id: string): void; issues: ReactNode }) {
   const def = EIP_BY_TYPE[step.type];
   const set = (fn: (s: KnownStep) => void) => mutate(step.id, (n) => fn(n as KnownStep));
   return (
@@ -306,6 +322,9 @@ function StepInspector({ step, mutate, onDelete, onDuplicate, issues }: { step: 
       <div className="inspector-actions">
         <button className="tinybtn" onClick={() => onDuplicate(step.id)}>
           Duplicate <span className="kbd">Ctrl D</span>
+        </button>
+        <button className="tinybtn" onClick={() => onSaveSnippet(step.id)} title="Reuse this step (with everything inside it) from the palette">
+          ☆ Save as snippet
         </button>
         <button className="tinybtn" onClick={() => onDelete(step.id)} style={{ color: 'var(--red)' }}>
           Delete <span className="kbd">Del</span>
@@ -355,6 +374,17 @@ function ExceptionInspector({ ex, mutate, onDelete, issues }: { ex: OnException;
       </label>
       <TextField label="Maximum redeliveries" type="number" value={ex.maximumRedeliveries ?? ''} onChange={(v) => set((x) => (x.maximumRedeliveries = v || undefined))} placeholder="0" />
       <TextField label="Redelivery delay (ms)" type="number" value={ex.redeliveryDelay ?? ''} onChange={(v) => set((x) => (x.redeliveryDelay = v || undefined))} placeholder="1000" />
+      <label className="check">
+        <input type="checkbox" checked={!!ex.useExponentialBackOff} onChange={(e) => set((x) => (x.useExponentialBackOff = e.target.checked || undefined))} />
+        Exponential back-off
+      </label>
+      {ex.useExponentialBackOff && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <TextField label="Multiplier" type="number" value={ex.backOffMultiplier ?? ''} onChange={(v) => set((x) => (x.backOffMultiplier = v || undefined))} placeholder="2" />
+          <TextField label="Max delay (ms)" type="number" value={ex.maximumRedeliveryDelay ?? ''} onChange={(v) => set((x) => (x.maximumRedeliveryDelay = v || undefined))} placeholder="60000" />
+        </div>
+      )}
+      <RedeliveryTimeline ex={ex} />
       <div className="inspector-actions">
         <button className="tinybtn" onClick={() => onDelete(ex.id)} style={{ color: 'var(--red)' }}>
           Delete error handler
@@ -371,11 +401,12 @@ function BranchInspector({ branch, mutate, onDelete, issues }: { branch: Branch;
     otherwise: ['otherwise', 'Steps run when no condition matched.'],
     doCatch: ['doCatch', 'Steps run when one of the listed exceptions is thrown in the try block.'],
     doFinally: ['doFinally', 'Steps always run after the try block.'],
+    onFallback: ['onFallback', 'Steps run when the circuit is open or the protected call fails.'],
   };
   const [title, text] = titles[branch.kind];
   return (
     <div className="inspector">
-      <Head icon={branch.kind === 'doCatch' ? '⚑' : branch.kind === 'doFinally' ? '↧' : '◇'} title={title} text={text} />
+      <Head icon={branch.kind === 'doCatch' ? '⚑' : branch.kind === 'doFinally' ? '↧' : branch.kind === 'onFallback' ? '⚡' : '◇'} title={title} text={text} />
       {issues}
       {branch.kind === 'when' && <ExpressionEditor label="Condition" value={branch.expression} onChange={(e) => set((b) => (b.expression = e))} />}
       {branch.kind === 'doCatch' && (
@@ -392,6 +423,107 @@ function BranchInspector({ branch, mutate, onDelete, issues }: { branch: Branch;
       <div className="inspector-actions">
         <button className="tinybtn" onClick={() => onDelete(branch.id)} style={{ color: 'var(--red)' }}>
           Delete branch
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- redelivery timeline
+
+/** Delays Camel will wait before each redelivery attempt. */
+export function redeliverySchedule(ex: OnException): number[] {
+  const n = Math.min(Math.max(0, parseInt(ex.maximumRedeliveries ?? '0', 10) || 0), 50);
+  const base = Math.max(0, parseInt(ex.redeliveryDelay ?? '1000', 10) || 0);
+  const mult = ex.useExponentialBackOff ? Math.max(1, parseFloat(ex.backOffMultiplier ?? '2') || 2) : 1;
+  const max = parseInt(ex.maximumRedeliveryDelay ?? '60000', 10) || 60000;
+  const out: number[] = [];
+  let d = base;
+  for (let i = 0; i < n; i++) {
+    out.push(Math.min(d, max));
+    d = d * mult;
+  }
+  return out;
+}
+
+const fmtMs = (ms: number) => (ms >= 60000 ? `${(ms / 60000).toFixed(ms % 60000 ? 1 : 0)} min` : ms >= 1000 ? `${(ms / 1000).toFixed(ms % 1000 ? 1 : 0)} s` : `${ms} ms`);
+
+function RedeliveryTimeline({ ex }: { ex: OnException }) {
+  const delays = redeliverySchedule(ex);
+  const total = delays.reduce((a, b) => a + b, 0);
+  return (
+    <div className="timeline" aria-label="Redelivery timeline">
+      <div className="field-label">
+        <span>Timeline</span>
+        <span>{delays.length ? `gives up after ~${fmtMs(total)}` : 'no retries'}</span>
+      </div>
+      <div className="timeline-bar">
+        <span className="tl-attempt" title="First attempt">1</span>
+        {delays.slice(0, 12).map((d, i) => (
+          <span key={i} style={{ display: 'contents' }}>
+            <span className="tl-wait" style={{ flexGrow: Math.max(1, Math.log2(d + 2)) }} title={`wait ${fmtMs(d)}`}>
+              {fmtMs(d)}
+            </span>
+            <span className="tl-attempt" title={`Redelivery ${i + 1}`}>
+              {i + 2}
+            </span>
+          </span>
+        ))}
+        {delays.length > 12 && <span className="tl-wait">+{delays.length - 12}</span>}
+        <span className={`tl-end ${ex.handled ? 'handled' : ''}`}>{ex.handled ? 'handled → steps' : 'fails → steps'}</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- REST
+
+function RestInspector({ rest, mutate, onDelete, issues }: { rest: RestDef; mutate: Mutate; onDelete(id: string): void; issues: ReactNode }) {
+  const set = (fn: (r: RestDef) => void) => mutate(rest.id, (n) => fn(n as RestDef));
+  const setVerb = (id: string, fn: (v: RestVerb) => void) => set((r) => r.verbs.forEach((v) => v.id === id && fn(v)));
+  return (
+    <div className="inspector">
+      <Head icon="⇄" title="REST API" text="Maps HTTP operations to routes. Each operation usually calls a direct: route." docs="https://camel.apache.org/manual/rest-dsl.html" />
+      {issues}
+      <TextField label="Base path" value={rest.path} onChange={(v) => set((r) => (r.path = v))} required />
+      <TextField label="Description" value={rest.description ?? ''} mono={false} onChange={(v) => set((r) => (r.description = v || undefined))} />
+      <div className="subhead">Operations</div>
+      {rest.verbs.map((v) => (
+        <div key={v.id} className="verb-card">
+          <div style={{ display: 'grid', gridTemplateColumns: '92px 1fr auto', gap: 6, marginBottom: 6 }}>
+            <select className="select" value={v.method} onChange={(e) => setVerb(v.id, (x) => (x.method = e.target.value as HttpVerb))} aria-label="HTTP method">
+              {HTTP_VERBS.map((m) => (
+                <option key={m} value={m}>
+                  {m.toUpperCase()}
+                </option>
+              ))}
+            </select>
+            <input className="input mono" value={v.path} onChange={(e) => setVerb(v.id, (x) => (x.path = e.target.value))} aria-label="Path" placeholder="/orders/{id}" />
+            <button className="tinybtn" onClick={() => set((r) => (r.verbs = r.verbs.filter((x) => x.id !== v.id)))} aria-label="Remove operation">
+              ✕
+            </button>
+          </div>
+          <input className="input mono" value={v.to} onChange={(e) => setVerb(v.id, (x) => (x.to = e.target.value))} aria-label="Target endpoint" placeholder="direct:get-order" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 6 }}>
+            <input className="input" value={v.consumes ?? ''} onChange={(e) => setVerb(v.id, (x) => (x.consumes = e.target.value || undefined))} aria-label="Consumes" placeholder="consumes" />
+            <input className="input" value={v.produces ?? ''} onChange={(e) => setVerb(v.id, (x) => (x.produces = e.target.value || undefined))} aria-label="Produces" placeholder="produces" />
+          </div>
+        </div>
+      ))}
+      <button
+        className="tinybtn"
+        onClick={() =>
+          set((r) => {
+            r.verbs.push({ id: uid('verb'), method: 'get', path: '/new', to: 'direct:new' });
+            r.verbs.sort((a, b) => HTTP_VERBS.indexOf(a.method) - HTTP_VERBS.indexOf(b.method));
+          })
+        }
+      >
+        + Operation
+      </button>
+      <div className="inspector-actions">
+        <button className="tinybtn" onClick={() => onDelete(rest.id)} style={{ color: 'var(--red)' }}>
+          Delete REST API
         </button>
       </div>
     </div>

@@ -82,6 +82,17 @@ export const COMPONENTS: ComponentDef[] = [
   { scheme: 'mock', docs: 'mock', title: 'Mock', category: 'Testing', description: 'Mock endpoint for unit tests.', syntax: 'mock:name', example: 'mock:result', consumer: false, producer: true, starter: 'camel-mock-starter', options: [] },
 ];
 
+import generated from '../content/catalog.generated.json';
+
+/**
+ * Curated components win for their nicer examples/option picks; everything else comes from
+ * the generated camel-catalog file (empty until `node scripts/generate-catalog.mjs` is run).
+ */
+for (const g of generated as ComponentDef[]) {
+  if (!COMPONENTS.some((c) => c.scheme === g.scheme)) COMPONENTS.push(g);
+}
+COMPONENTS.sort((a, b) => a.title.localeCompare(b.title));
+
 export const COMPONENT_BY_SCHEME: Record<string, ComponentDef> = Object.fromEntries(COMPONENTS.map((c) => [c.scheme, c]));
 
 export const COMPONENT_CATEGORIES: ComponentCategory[] = ['Core', 'Messaging', 'Files', 'HTTP & API', 'Database', 'Cloud', 'Mail', 'Transformation', 'Scheduling', 'Testing'];

@@ -2,7 +2,8 @@ import { useSyncExternalStore } from 'react';
 
 /**
  * Hash router. Hash URLs work on plain static hosting (Apache, no rewrites).
- * Routes: /, /dashboard, /builder/:id, /kb, /kb/:slug, /terms, /privacy
+ * Routes: /, /dashboard, /builder/:id, /kb, /kb/:slug, /terms, /privacy,
+ *         /login, /register, /forgot, /reset/:token, /verify/:token, /account, /s/:token
  */
 export type Route =
   | { name: 'landing' }
@@ -12,6 +13,13 @@ export type Route =
   | { name: 'recipe'; slug: string }
   | { name: 'terms' }
   | { name: 'privacy' }
+  | { name: 'login' }
+  | { name: 'register' }
+  | { name: 'forgot' }
+  | { name: 'reset'; token: string }
+  | { name: 'verify'; token: string }
+  | { name: 'account' }
+  | { name: 'shared'; token: string }
   | { name: 'notFound'; path: string };
 
 export function parse(hash: string): Route {
@@ -25,6 +33,13 @@ export function parse(hash: string): Route {
   if (a === 'kb' && b) return { name: 'recipe', slug: decodeURIComponent(b) };
   if (a === 'terms') return { name: 'terms' };
   if (a === 'privacy') return { name: 'privacy' };
+  if (a === 'login') return { name: 'login' };
+  if (a === 'register') return { name: 'register' };
+  if (a === 'forgot') return { name: 'forgot' };
+  if (a === 'account') return { name: 'account' };
+  if (a === 'reset' && b) return { name: 'reset', token: b };
+  if (a === 'verify' && b) return { name: 'verify', token: b };
+  if (a === 's' && b) return { name: 'shared', token: b };
   return { name: 'notFound', path };
 }
 

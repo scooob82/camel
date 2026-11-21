@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { RECIPES } from '../content/recipes';
+import { importAny } from './importer';
 import { buildUri, parseUri, setUriParam } from './catalog';
 import { toMermaid } from './docs';
 import { insertStep, moveStep, removeNode, findNode } from './edit';
@@ -69,15 +70,15 @@ test('unknown steps and top-level elements are preserved in YAML', () => {
     from:
       uri: direct:a
       steps:
-        - throttle:
-            constant: 10
+        - saga:
+            propagation: REQUIRED
 `;
   const f = fromYaml(src);
   assert.equal(f.extras?.length, 1);
   assert.equal(f.routes[0].steps[0].type, 'unknown');
   const again = fromYaml(toYaml(f));
   assert.deepEqual(norm(again), norm(f));
-  assert.match(toYaml(f), /throttle/);
+  assert.match(toYaml(f), /saga/);
 });
 
 test('YAML errors are reported', () => {
@@ -178,4 +179,174 @@ test('Mermaid output', () => {
   const m = toMermaid(fromYaml(RECIPES[0].yaml));
   assert.match(m, /^flowchart LR/);
   assert.match(m, /\{"choice"\}/);
+});
+
+const KITCHEN_SINK = `- onException:
+    exception:
+      - java.io.IOException
+    handled:
+      constant: "true"
+    redeliveryPolicy:
+      maximumRedeliveries: 4
+      redeliveryDelay: 500
+      useExponentialBackOff: true
+      backOffMultiplier: 2
+      maximumRedeliveryDelay: 10000
+    steps:
+      - log:
+          message: failed
+- rest:
+    path: /api
+    get:
+      - path: /orders/{id}
+        produces: application/json
+        to: direct:get-order
+    post:
+      - path: /orders
+        to: direct:create-order
+- route:
+    id: get-order
+    from:
+      uri: direct:get-order
+      steps:
+        - throttle:
+            constant: "5"
+            rejectExecution: true
+        - circuitBreaker:
+            steps:
+              - to:
+                  uri: http://inventory:8080/api?connectTimeout=1000
+            onFallback:
+              steps:
+                - setBody:
+                    constant: unavailable
+        - enrich:
+            constant: direct:customer
+            aggregationStrategy: "#merge"
+        - pollEnrich:
+            constant: file:data/prices?noop=true
+            timeout: 2000
+        - recipientList:
+            header: recipients
+            delimiter: ";"
+            parallelProcessing: true
+        - routingSlip:
+            header: slip
+        - dynamicRouter:
+            simple: \${bean:router?method=next}
+        - threads:
+            poolSize: 5
+            maxPoolSize: 10
+- route:
+    id: create-order
+    from:
+      uri: direct:create-order
+      steps:
+        - log:
+            message: created
+`;
+
+test('new EIPs, REST DSL and back-off round-trip via YAML and XML', () => {
+  const m1 = fromYaml(KITCHEN_SINK);
+  assert.equal(m1.rests?.length, 1);
+  assert.equal(m1.rests![0].verbs.length, 2);
+  assert.equal(m1.onExceptions[0].useExponentialBackOff, true);
+  assert.deepEqual(norm(fromYaml(toYaml(m1))), norm(m1));
+  assert.deepEqual(norm(fromXml(toXml(m1))), norm(m1));
+  const errors = validate(m1).filter((i) => i.severity === 'error');
+  assert.deepEqual(errors, []);
+});
+
+test('Java export of new EIPs and REST DSL', () => {
+  const java = toJava(fromYaml(KITCHEN_SINK), 'Sink');
+  assert.match(java, /rest\("\/api"\)/);
+  assert.match(java, /\.get\("\/orders\/\{id\}"\)\.produces\("application\/json"\)\.to\("direct:get-order"\)/);
+  assert.match(java, /\.circuitBreaker\(\)[\s\S]*\.onFallback\(\)[\s\S]*\.end\(\)/);
+  assert.match(java, /\.useExponentialBackOff\(\)/);
+  assert.match(java, /\.enrich\("direct:customer"\)\.aggregationStrategy\("merge"\)/);
+  assert.match(java, /\.threads\(5, 10\)/);
+  const starters = requiredStarters(fromYaml(KITCHEN_SINK), 'yaml');
+  assert.ok(starters.includes('camel-resilience4j-starter'));
+  assert.ok(starters.includes('camel-rest-starter'));
+});
+
+test('REST target without consuming route is flagged', () => {
+  const f = fromYaml(KITCHEN_SINK);
+  f.rests![0].verbs[0].to = 'direct:missing';
+  assert.ok(validate(f).some((i) => i.rule === 'rest-target'));
+});
+
+test('contract-first: OpenAPI 3 → REST DSL + routes', () => {
+  const { file, contract } = importAny('petstore.yaml', `openapi: 3.0.3
+info:
+  title: Orders API
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /orders:
+    get:
+      operationId: listOrders
+      responses:
+        "200":
+          content:
+            application/json: {}
+    post:
+      operationId: createOrder
+  /orders/{id}:
+    get:
+      summary: Get one order
+`);
+  assert.equal(contract, 'openapi');
+  assert.equal(file.rests![0].path, '/v1');
+  assert.deepEqual(file.rests![0].verbs.map((v) => `${v.method} ${v.path} ${v.to}`), ['get /orders direct:list-orders', 'get /orders/{id} direct:get-orders-id', 'post /orders direct:create-order']);
+  assert.equal(file.routes.length, 3);
+  assert.deepEqual(validate(file).filter((i) => i.severity === 'error'), []);
+  assert.deepEqual(norm(fromYaml(toYaml(file))), norm(file));
+});
+
+test('contract-first: AsyncAPI 2 and 3', () => {
+  const v2 = importAny('events.yaml', `asyncapi: 2.6.0
+servers:
+  prod:
+    url: broker:9092
+    protocol: kafka
+channels:
+  orders.created:
+    publish: {}
+  invoices.sent:
+    subscribe: {}
+`).file;
+  assert.ok(v2.routes.some((r) => r.from.uri.startsWith('kafka:orders.created')));
+  assert.ok(v2.routes.some((r) => r.routeId === 'send-invoices-sent'));
+  const v3 = importAny('events.yaml', `asyncapi: 3.0.0
+servers:
+  prod:
+    host: mq:1883
+    protocol: mqtt
+channels:
+  temp:
+    address: sensors/temperature
+operations:
+  onTemp:
+    action: receive
+    channel:
+      $ref: '#/channels/temp'
+`).file;
+  assert.ok(v3.routes[0].from.uri.startsWith('paho-mqtt5:sensors/temperature'));
+});
+
+test('contract-first: WSDL → cxf route with operation choice', () => {
+  const { file, contract } = importAny('orders.wsdl', `<?xml version="1.0"?>
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/" name="OrderService">
+  <wsdl:portType name="OrderPort">
+    <wsdl:operation name="GetOrder"/>
+    <wsdl:operation name="CancelOrder"/>
+  </wsdl:portType>
+  <wsdl:service name="OrderService"/>
+</wsdl:definitions>`);
+  assert.equal(contract, 'wsdl');
+  assert.match(file.routes[0].from.uri, /^cxf:\/OrderService\?wsdlURL=classpath:wsdl\/orders.wsdl/);
+  const choice = file.routes[0].steps[0] as any;
+  assert.equal(choice.branches.length, 3);
+  assert.equal(file.routes.length, 3);
 });

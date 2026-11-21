@@ -1,4 +1,4 @@
-import { LANGUAGES, STEP_TYPES, isKnown, uid, type Branch, type CamelFile, type Expression, type KnownStep, type Language, type OnException, type Route, type Step, type StepType } from './model';
+import { HTTP_VERBS, LANGUAGES, STEP_TYPES, isKnown, uid, type Branch, type CamelFile, type Expression, type HttpVerb, type KnownStep, type Language, type OnException, type RestDef, type Route, type Step, type StepType } from './model';
 import { escapeXml, parseXml, type XmlNode } from './xmlparse';
 import { DslParseError } from './yaml';
 
@@ -98,6 +98,26 @@ function stepXml(step: Step, depth: number): string[] {
     case 'transacted':
     case 'stop':
       return [`${pad(depth)}<${step.type}/>`];
+    case 'throttle':
+      return block('throttle', attrs({ asyncDelayed: p.asyncDelayed, rejectExecution: p.rejectExecution }), exprXml(step.expression, d1), depth);
+    case 'enrich':
+      return block('enrich', attrs({ aggregationStrategy: p.aggregationStrategy }), exprXml(step.expression, d1), depth);
+    case 'pollEnrich':
+      return block('pollEnrich', attrs({ timeout: p.timeout, aggregationStrategy: p.aggregationStrategy }), exprXml(step.expression, d1), depth);
+    case 'recipientList':
+      return block('recipientList', attrs({ delimiter: p.delimiter, parallelProcessing: p.parallelProcessing, stopOnException: p.stopOnException }), exprXml(step.expression, d1), depth);
+    case 'routingSlip':
+      return block('routingSlip', attrs({ uriDelimiter: p.uriDelimiter }), exprXml(step.expression, d1), depth);
+    case 'dynamicRouter':
+      return block('dynamicRouter', '', exprXml(step.expression, d1), depth);
+    case 'threads':
+      return [`${pad(depth)}<threads${attrs({ poolSize: p.poolSize, maxPoolSize: p.maxPoolSize })}/>`];
+    case 'circuitBreaker': {
+      const inner = stepsXml(step.steps, d1);
+      const fb = (step.branches ?? []).find((b) => b.kind === 'onFallback');
+      if (fb) inner.push(...block('onFallback', '', stepsXml(fb.steps, d1 + 1), d1));
+      return block('circuitBreaker', '', inner, depth);
+    }
   }
 }
 
@@ -115,8 +135,16 @@ function onExceptionXml(ex: OnException): string[] {
   return [
     `${pad(1)}<onException>`,
     ...ex.exceptions.map((e) => `${pad(2)}<exception>${escapeXml(e)}</exception>`),
-    ...(ex.maximumRedeliveries || ex.redeliveryDelay
-      ? [`${pad(2)}<redeliveryPolicy${attrs({ maximumRedeliveries: ex.maximumRedeliveries, redeliveryDelay: ex.redeliveryDelay })}/>`]
+    ...(ex.maximumRedeliveries || ex.redeliveryDelay || ex.useExponentialBackOff || ex.backOffMultiplier || ex.maximumRedeliveryDelay
+      ? [
+          `${pad(2)}<redeliveryPolicy${attrs({
+            maximumRedeliveries: ex.maximumRedeliveries,
+            redeliveryDelay: ex.redeliveryDelay,
+            useExponentialBackOff: ex.useExponentialBackOff ? 'true' : undefined,
+            backOffMultiplier: ex.backOffMultiplier,
+            maximumRedeliveryDelay: ex.maximumRedeliveryDelay,
+          })}/>`,
+        ]
       : []),
     ...(ex.handled ? [`${pad(2)}<handled><constant>true</constant></handled>`] : []),
     ...stepsXml(ex.steps, 2),
@@ -124,11 +152,19 @@ function onExceptionXml(ex: OnException): string[] {
   ];
 }
 
+function restXml(r: RestDef): string[] {
+  const verbs = r.verbs.flatMap((v) =>
+    block(v.method, attrs({ path: v.path, consumes: v.consumes, produces: v.produces }), [...(v.description ? [`${pad(3)}<description>${escapeXml(v.description)}</description>`] : []), `${pad(3)}<to${attrs({ uri: v.to })}/>`], 2),
+  );
+  return block('rest', attrs({ path: r.path }), [...(r.description ? [`${pad(2)}<description>${escapeXml(r.description)}</description>`] : []), ...verbs], 1);
+}
+
 export function toXml(file: CamelFile): string {
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<routes xmlns="http://camel.apache.org/schema/xml-io">',
     ...file.onExceptions.flatMap(onExceptionXml),
+    ...(file.rests ?? []).flatMap(restXml),
     ...file.routes.flatMap(routeXml),
   ];
   if (file.extras?.length) lines.push(`${pad(1)}<!-- ${file.extras.length} top-level YAML element(s) have no XML equivalent in the builder and were omitted -->`);
@@ -242,6 +278,38 @@ function parseStepXml(n: XmlNode, src: string): Step {
     case 'transacted':
     case 'stop':
       break;
+    case 'throttle':
+      pick('asyncDelayed', 'rejectExecution');
+      step.expression = exprOf(n);
+      break;
+    case 'enrich':
+      pick('aggregationStrategy');
+      step.expression = exprOf(n) ?? (a.uri ? { language: 'constant', expression: a.uri } : undefined);
+      break;
+    case 'pollEnrich':
+      pick('timeout', 'aggregationStrategy');
+      step.expression = exprOf(n) ?? (a.uri ? { language: 'constant', expression: a.uri } : undefined);
+      break;
+    case 'recipientList':
+      pick('delimiter', 'parallelProcessing', 'stopOnException');
+      step.expression = exprOf(n);
+      break;
+    case 'routingSlip':
+      pick('uriDelimiter');
+      step.expression = exprOf(n);
+      break;
+    case 'dynamicRouter':
+      step.expression = exprOf(n);
+      break;
+    case 'threads':
+      pick('poolSize', 'maxPoolSize');
+      break;
+    case 'circuitBreaker': {
+      step.steps = stepChildren(n, src, ['onFallback', 'resilience4jConfiguration', 'faultToleranceConfiguration']);
+      const fb = n.children.find((c) => c.name === 'onFallback');
+      step.branches = fb ? [{ id: uid('b'), kind: 'onFallback', steps: stepChildren(fb, src) }] : [];
+      break;
+    }
   }
   return step;
 }
@@ -269,7 +337,32 @@ function parseOnExceptionXml(n: XmlNode, src: string): OnException {
     handled: handled?.expression === 'true',
     maximumRedeliveries: rp?.attrs.maximumRedeliveries,
     redeliveryDelay: rp?.attrs.redeliveryDelay,
+    useExponentialBackOff: rp?.attrs.useExponentialBackOff === 'true' ? true : undefined,
+    backOffMultiplier: rp?.attrs.backOffMultiplier,
+    maximumRedeliveryDelay: rp?.attrs.maximumRedeliveryDelay,
     steps: stepChildren(n, src, ['exception', 'redeliveryPolicy', 'handled', 'onWhen']),
+  };
+}
+
+const VERB_SET = new Set<string>(HTTP_VERBS);
+
+function parseRestXml(n: XmlNode): RestDef {
+  return {
+    id: uid('rest'),
+    kind: 'rest',
+    path: n.attrs.path ?? '/',
+    description: n.children.find((c) => c.name === 'description')?.text || undefined,
+    verbs: n.children
+      .filter((c) => VERB_SET.has(c.name))
+      .map((c) => ({
+        id: uid('verb'),
+        method: c.name as HttpVerb,
+        path: c.attrs.path ?? '/',
+        to: c.children.find((x) => x.name === 'to')?.attrs.uri ?? c.attrs.to ?? '',
+        consumes: c.attrs.consumes,
+        produces: c.attrs.produces,
+        description: c.children.find((x) => x.name === 'description')?.text || undefined,
+      })),
   };
 }
 
@@ -286,6 +379,8 @@ export function fromXml(text: string): CamelFile {
     for (const c of n.children) {
       if (c.name === 'route') file.routes.push(parseRouteXml(c, text, file.routes.length));
       else if (c.name === 'onException') file.onExceptions.push(parseOnExceptionXml(c, text));
+      else if (c.name === 'rest') (file.rests ??= []).push(parseRestXml(c));
+      else if (c.name === 'rests') c.children.filter((x) => x.name === 'rest').forEach((x) => (file.rests ??= []).push(parseRestXml(x)));
       else if (c.name === 'camelContext' || c.name === 'routes' || c.name === 'routeContext') collect(c);
     }
   };

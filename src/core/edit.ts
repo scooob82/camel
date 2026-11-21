@@ -1,15 +1,17 @@
 /** Immutable editing operations on the canonical model. */
-import { isKnown, type Branch, type CamelFile, type Container, type KnownStep, type OnException, type Route, type Step } from './model';
+import { isKnown, type Branch, type CamelFile, type Container, type KnownStep, type OnException, type RestDef, type Route, type Step } from './model';
 
 export type NodeRef =
   | { kind: 'route'; node: Route }
   | { kind: 'onException'; node: OnException }
+  | { kind: 'rest'; node: RestDef }
   | { kind: 'step'; node: Step; parent: Container }
   | { kind: 'branch'; node: Branch; parent: KnownStep };
 
 export function findNode(file: CamelFile, id: string): NodeRef | undefined {
   for (const r of file.routes) if (r.id === id) return { kind: 'route', node: r };
   for (const e of file.onExceptions) if (e.id === id) return { kind: 'onException', node: e };
+  for (const r of file.rests ?? []) if (r.id === id) return { kind: 'rest', node: r };
   let found: NodeRef | undefined;
   const visit = (owner: Container): boolean => {
     for (const s of owner.steps) {
@@ -39,6 +41,7 @@ export function findNode(file: CamelFile, id: string): NodeRef | undefined {
 function container(file: CamelFile, id: string): Container | undefined {
   const ref = findNode(file, id);
   if (!ref) return undefined;
+  if (ref.kind === 'rest') return undefined;
   if (ref.kind === 'route' || ref.kind === 'onException' || ref.kind === 'branch') return ref.node;
   if (isKnown(ref.node) && ref.node.steps) return ref.node as Container;
   return undefined;
@@ -60,6 +63,7 @@ export function removeNode(file: CamelFile, id: string): CamelFile {
   if (!ref) return file;
   if (ref.kind === 'route') next.routes = next.routes.filter((r) => r.id !== id);
   else if (ref.kind === 'onException') next.onExceptions = next.onExceptions.filter((e) => e.id !== id);
+  else if (ref.kind === 'rest') next.rests = (next.rests ?? []).filter((r) => r.id !== id);
   else if (ref.kind === 'step') ref.parent.steps = ref.parent.steps.filter((s) => s.id !== id);
   else ref.parent.branches = (ref.parent.branches ?? []).filter((b) => b.id !== id);
   return next;
@@ -90,7 +94,7 @@ export function duplicateStep(file: CamelFile, stepId: string, reid: (s: Step) =
 }
 
 /** Apply a mutation to a node (route, onException, step or branch) by id. */
-export function updateNode(file: CamelFile, id: string, mutate: (node: Route | OnException | Step | Branch) => void): CamelFile {
+export function updateNode(file: CamelFile, id: string, mutate: (node: Route | OnException | RestDef | Step | Branch) => void): CamelFile {
   const next = clone(file);
   const ref = findNode(next, id);
   if (!ref) return file;

@@ -1,4 +1,4 @@
-import { isKnown, type CamelFile, type Expression, type OnException, type Route, type Step } from './model';
+import { isKnown, type CamelFile, type Expression, type OnException, type RestDef, type Route, type Step } from './model';
 
 const q = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
 
@@ -83,6 +83,41 @@ function step(s: Step, depth: number, out: string[]): void {
     case 'stop':
       line('.stop()');
       return;
+    case 'throttle':
+      line(`.throttle(${expr(s.expression)})${p.asyncDelayed === 'true' ? '.asyncDelayed()' : ''}${p.rejectExecution === 'true' ? '.rejectExecution(true)' : ''}`);
+      return;
+    case 'enrich':
+    case 'pollEnrich': {
+      const e = s.expression;
+      let c = e?.language === 'constant' ? `.${s.type}(${q(e.expression)})` : `.${s.type}().${e?.language ?? 'simple'}(${q(e?.expression ?? '')})`;
+      if (s.type === 'pollEnrich' && p.timeout) c += `.timeout(${p.timeout})`;
+      if (p.aggregationStrategy) c += `.aggregationStrategy(${q(p.aggregationStrategy.replace(/^#/, ''))})`;
+      line(c);
+      return;
+    }
+    case 'recipientList':
+      line(`.recipientList(${expr(s.expression)})${p.delimiter ? `.delimiter(${q(p.delimiter)})` : ''}${flags(['parallelProcessing', 'stopOnException'])}`);
+      return;
+    case 'routingSlip':
+      line(`.routingSlip(${expr(s.expression)})${p.uriDelimiter ? `.uriDelimiter(${q(p.uriDelimiter)})` : ''}`);
+      return;
+    case 'dynamicRouter':
+      line(`.dynamicRouter(${expr(s.expression)})`);
+      return;
+    case 'threads':
+      line(`.threads(${[p.poolSize, p.poolSize && p.maxPoolSize].filter(Boolean).join(', ')})`);
+      return;
+    case 'circuitBreaker':
+      line('.circuitBreaker()');
+      steps(s.steps, depth + 1, out);
+      for (const b of s.branches ?? []) {
+        if (b.kind === 'onFallback') {
+          line('.onFallback()');
+          steps(b.steps, depth + 1, out);
+        }
+      }
+      line('.end()');
+      return;
     case 'filter':
     case 'loop':
       line(`.${s.type}(${expr(s.expression)})`);
@@ -148,8 +183,24 @@ function onException(ex: OnException, out: string[]): void {
   if (ex.handled) head += '\n            .handled(true)';
   if (ex.maximumRedeliveries) head += `\n            .maximumRedeliveries(${ex.maximumRedeliveries})`;
   if (ex.redeliveryDelay) head += `\n            .redeliveryDelay(${ex.redeliveryDelay})`;
+  if (ex.useExponentialBackOff) head += '\n            .useExponentialBackOff()';
+  if (ex.backOffMultiplier) head += `\n            .backOffMultiplier(${ex.backOffMultiplier})`;
+  if (ex.maximumRedeliveryDelay) head += `\n            .maximumRedeliveryDelay(${ex.maximumRedeliveryDelay})`;
   out.push(head);
   steps(ex.steps, 3, out);
+  out[out.length - 1] += ';';
+  out.push('');
+}
+
+function rest(r: RestDef, out: string[]): void {
+  out.push(`        rest(${q(r.path)})${r.description ? `.description(${q(r.description)})` : ''}`);
+  for (const v of r.verbs) {
+    let c = `            .${v.method}(${q(v.path)})`;
+    if (v.description) c += `.description(${q(v.description)})`;
+    if (v.consumes) c += `.consumes(${q(v.consumes)})`;
+    if (v.produces) c += `.produces(${q(v.produces)})`;
+    out.push(`${c}.to(${q(v.to)})`);
+  }
   out[out.length - 1] += ';';
   out.push('');
 }
@@ -181,6 +232,7 @@ export function toJava(file: CamelFile, projectName = 'Camel', pkg = 'com.exampl
     '    public void configure() throws Exception {',
   ];
   file.onExceptions.forEach((ex) => onException(ex, out));
+  (file.rests ?? []).forEach((r) => rest(r, out));
   file.routes.forEach((r) => route(r, out));
   if (!file.routes.length && !file.onExceptions.length) out.push('        // No routes yet');
   if (out[out.length - 1] === '') out.pop();

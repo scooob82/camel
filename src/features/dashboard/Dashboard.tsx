@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { href, navigate } from '../../app/router';
-import { appStore, projects, toast, useStore, type Project } from '../../app/store';
+import { authStore } from '../../app/session';
+import { appStore, importLocalProjects, localProjects, projects, toast, useStore, type Project } from '../../app/store';
 import { RECIPES } from '../../content/recipes';
 import { EIP_BY_TYPE } from '../../core/eip';
-import { baseName, importText } from '../../core/importer';
+import { baseName, CONTRACT_LABEL, IMPORT_ACCEPT, importAny } from '../../core/importer';
 import { emptyFile, isKnown, newRoute } from '../../core/model';
 import { validate } from '../../core/validate';
 import { fromYaml } from '../../core/yaml';
@@ -100,6 +101,11 @@ function NewProjectDialog({ onClose }: { onClose(): void }) {
 
 export function Dashboard() {
   const list = useStore(appStore, (s) => s.projects);
+  const mode = useStore(appStore, (s) => s.mode);
+  const auth = useStore(authStore, (s) => s);
+  const [localCount, setLocalCount] = useState(0);
+  const [importing, setImporting] = useState(false);
+  useEffect(() => setLocalCount(mode === 'remote' ? localProjects().length : 0), [mode]);
   const [q, setQ] = useState('');
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<Project>();
@@ -113,12 +119,12 @@ export function Dashboard() {
   const errors = useMemo(() => list.reduce((n, p) => n + validate(p.file).filter((i) => i.severity === 'error').length, 0), [list]);
 
   const importFile = async () => {
-    const picked = await pickTextFile('.yaml,.yml,.xml');
+    const picked = await pickTextFile(IMPORT_ACCEPT);
     if (!picked) return;
     try {
-      const file = importText(picked.name, picked.text);
-      const p = projects.create(baseName(picked.name), file, `Imported from ${picked.name}`);
-      toast(`Imported ${file.routes.length} route(s)`, 'success');
+      const { file, contract } = importAny(picked.name, picked.text);
+      const p = projects.create(baseName(picked.name), file, contract ? `Generated from the ${CONTRACT_LABEL[contract]} contract ${picked.name}` : `Imported from ${picked.name}`);
+      toast(contract ? `Generated ${file.routes.length} route(s) from ${CONTRACT_LABEL[contract]}` : `Imported ${file.routes.length} route(s)`, 'success');
       navigate(`/builder/${p.id}`);
     } catch (e) {
       toast(`Import failed: ${(e as Error).message}`, 'error');
@@ -131,17 +137,56 @@ export function Dashboard() {
         <div>
           <div className="tag">Workspace</div>
           <h1>Projects</h1>
-          <p>Your projects are saved in this browser. Accounts and cloud sync arrive with the next milestone.</p>
+          <p>
+            {mode === 'remote' ? (
+              <>Synced to your account{auth.user ? ` (${auth.user.email})` : ''} — available on every device.</>
+            ) : auth.status === 'anonymous' ? (
+              <>
+                Saved in this browser. <a href={href('/register')}>Create a free account</a> or <a href={href('/login')}>sign in</a> to sync across devices.
+              </>
+            ) : (
+              <>Saved in this browser.</>
+            )}
+          </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn" onClick={importFile}>
-            ↑ Import YAML / XML
+            ↑ Import routes / API contract
           </button>
           <button className="btn primary" onClick={() => setCreating(true)}>
             + New project
           </button>
         </div>
       </div>
+
+      {localCount > 0 && (
+        <div className="banner">
+          <span>
+            <b>{localCount}</b> project{localCount === 1 ? ' is' : 's are'} still stored only in this browser.
+          </span>
+          <button
+            className="btn sm primary"
+            disabled={importing}
+            onClick={async () => {
+              setImporting(true);
+              const n = await importLocalProjects();
+              setImporting(false);
+              setLocalCount(localProjects().length);
+              if (n) toast(`Imported ${n} project${n === 1 ? '' : 's'} to your account`, 'success');
+            }}
+          >
+            {importing ? 'Importing…' : 'Import to my account'}
+          </button>
+        </div>
+      )}
+      {auth.user && !auth.user.emailVerified && (
+        <div className="banner subtle">
+          <span>Please confirm your e-mail address — we sent a link to {auth.user.email}.</span>
+          <a className="btn sm" href={href('/account')}>
+            Resend
+          </a>
+        </div>
+      )}
 
       <div className="stat-row">
         <div className="card stat">
@@ -172,7 +217,7 @@ export function Dashboard() {
         <EmptyState
           icon="⇢"
           title="No projects yet"
-          text="Create a blank project, start from a proven recipe, or import Camel routes you already have."
+          text="Create a blank project, start from a proven recipe, import Camel routes you already have — or generate routes from an OpenAPI, AsyncAPI or WSDL contract."
           action={
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button className="btn primary" onClick={() => setCreating(true)}>

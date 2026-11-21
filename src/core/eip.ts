@@ -24,7 +24,7 @@ export interface EipDef {
   expressionLabel?: string;
   props: PropDef[];
   /** How children are organised. */
-  container?: 'steps' | 'choice' | 'doTry';
+  container?: 'steps' | 'choice' | 'doTry' | 'circuitBreaker';
   docs: string;
 }
 
@@ -63,6 +63,15 @@ export const EIPS: EipDef[] = [
     docs: docs('idempotentConsumer-eip'),
   },
 
+  {
+    type: 'recipientList', label: 'recipientList', icon: '⋔', category: 'Routing', summary: 'Send to a list of endpoints computed per message.', expression: 'required', expressionLabel: 'Endpoints', props: [{ name: 'delimiter', label: 'Delimiter', kind: 'text', placeholder: ',' }, bool('parallelProcessing', 'Parallel processing'), bool('stopOnException', 'Stop on exception')],
+    docs: docs('recipientList-eip'),
+  },
+  { type: 'routingSlip', label: 'routingSlip', icon: '⇶', category: 'Routing', summary: 'Route through a sequence of endpoints computed per message.', expression: 'required', expressionLabel: 'Slip (endpoints)', props: [{ name: 'uriDelimiter', label: 'Delimiter', kind: 'text', placeholder: ',' }], docs: docs('routingSlip-eip') },
+  { type: 'dynamicRouter', label: 'dynamicRouter', icon: '⟿', category: 'Routing', summary: 'Route repeatedly until the expression returns null.', expression: 'required', expressionLabel: 'Next endpoint', props: [], docs: docs('dynamicRouter-eip') },
+  { type: 'enrich', label: 'enrich', icon: '⊲', category: 'Routing', summary: 'Call a resource and merge the reply into the message.', expression: 'required', expressionLabel: 'Resource URI', props: [{ name: 'aggregationStrategy', label: 'Aggregation strategy (bean)', kind: 'text', placeholder: '#mergeStrategy' }], docs: docs('enrich-eip') },
+  { type: 'pollEnrich', label: 'pollEnrich', icon: '⊴', category: 'Routing', summary: 'Poll a resource (file, queue) and merge it into the message.', expression: 'required', expressionLabel: 'Resource URI', props: [{ name: 'timeout', label: 'Timeout (ms, -1 = wait)', kind: 'number', placeholder: '-1' }, { name: 'aggregationStrategy', label: 'Aggregation strategy (bean)', kind: 'text' }], docs: docs('pollEnrich-eip') },
+
   // Transformation
   { type: 'setBody', label: 'setBody', icon: 'ƒ', category: 'Transformation', summary: 'Replace the message body.', expression: 'required', props: [], docs: docs('setBody-eip') },
   { type: 'transform', label: 'transform', icon: '⇄', category: 'Transformation', summary: 'Transform the message body.', expression: 'required', props: [], docs: docs('transform-eip') },
@@ -81,7 +90,11 @@ export const EIPS: EipDef[] = [
   { type: 'transacted', label: 'transacted', icon: '⛁', category: 'Control', summary: 'Run the rest of the route in a transaction.', props: [], docs: docs('transactional-client') },
   { type: 'stop', label: 'stop', icon: '■', category: 'Control', summary: 'Stop routing the current message.', props: [], docs: docs('stop-eip') },
 
+  { type: 'throttle', label: 'throttle', icon: '⧖', category: 'Control', summary: 'Limit the number of concurrent requests.', expression: 'required', expressionLabel: 'Max concurrent requests', props: [{ name: 'asyncDelayed', label: 'Async delayed', kind: 'boolean' }, { name: 'rejectExecution', label: 'Reject when over limit', kind: 'boolean' }], docs: docs('throttle-eip') },
+  { type: 'threads', label: 'threads', icon: '⫴', category: 'Control', summary: 'Continue the route asynchronously in a thread pool.', props: [{ name: 'poolSize', label: 'Pool size', kind: 'number', placeholder: '10' }, { name: 'maxPoolSize', label: 'Max pool size', kind: 'number', placeholder: '20' }], docs: docs('threads-eip') },
+
   // Error handling
+  { type: 'circuitBreaker', label: 'circuitBreaker', icon: '⚡', category: 'Error handling', summary: 'Stop calling a failing service and use a fallback (Resilience4j).', container: 'circuitBreaker', props: [], docs: docs('circuitBreaker-eip') },
   { type: 'doTry', label: 'doTry / doCatch', icon: '⚑', category: 'Error handling', summary: 'Try/catch/finally block inside a route.', container: 'doTry', props: [], docs: docs('doTry') },
 ];
 
@@ -113,8 +126,14 @@ export function newStep(type: StepType, uri?: string): KnownStep {
       loop: '3',
       idempotentConsumer: '${header.messageId}',
       delay: '1000',
+      throttle: '10',
+      enrich: 'direct:lookup',
+      pollEnrich: 'file:data/lookup?noop=true',
+      recipientList: '${header.recipients}',
+      routingSlip: '${header.slip}',
+      dynamicRouter: '${bean:router?method=next}',
     };
-    const constantTypes: StepType[] = ['loop', 'delay', 'setHeader', 'setProperty'];
+    const constantTypes: StepType[] = ['loop', 'delay', 'setHeader', 'setProperty', 'throttle', 'enrich', 'pollEnrich'];
     step.expression = { language: constantTypes.includes(type) ? 'constant' : 'simple', expression: defaults[type] ?? '' };
   }
   switch (type) {
@@ -149,6 +168,10 @@ export function newStep(type: StepType, uri?: string): KnownStep {
   }
   if (def?.container === 'steps') step.steps = [];
   if (def?.container === 'choice') step.branches = [newBranch('when'), newBranch('otherwise')];
+  if (def?.container === 'circuitBreaker') {
+    step.steps = [];
+    step.branches = [newBranch('onFallback')];
+  }
   if (def?.container === 'doTry') {
     step.steps = [];
     step.branches = [newBranch('doCatch')];

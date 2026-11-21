@@ -56,7 +56,7 @@ function checkSteps(steps: Step[], issues: Issue[]): void {
     for (const p of def.props) {
       if (p.required && !(s.props[p.name] ?? '').trim()) issues.push({ severity: 'error', message: `${def.label}: "${p.label}" is required`, target: s.id, rule: 'prop-required' });
     }
-    if (def.container === 'steps' && !(s.steps ?? []).length) {
+    if ((def.container === 'steps' || def.container === 'circuitBreaker') && !(s.steps ?? []).length) {
       issues.push({ severity: 'warning', message: `${def.label} has no inner steps`, target: s.id, rule: 'empty-branch' });
     }
     if (s.type === 'aggregate' && !s.props.completionSize && !s.props.completionTimeout) {
@@ -104,6 +104,21 @@ export function validate(file: CamelFile): Issue[] {
     if (!ex.exceptions.length) issues.push({ severity: 'error', message: 'onException: at least one exception class is required', target: ex.id, rule: 'onexception-class' });
     checkSteps(ex.steps, issues);
   }
+  const consumers = new Set(file.routes.map((r) => r.from.uri.split('?')[0]));
+  for (const r of file.rests ?? []) {
+    if (!r.verbs.length) issues.push({ severity: 'warning', message: `REST ${r.path} has no operations`, target: r.id, rule: 'rest-empty' });
+    const seen = new Set<string>();
+    for (const v of r.verbs) {
+      const key = `${v.method} ${v.path}`;
+      if (seen.has(key)) issues.push({ severity: 'error', message: `Duplicate REST operation ${v.method.toUpperCase()} ${v.path}`, target: r.id, rule: 'rest-duplicate' });
+      seen.add(key);
+      if (!v.to.trim()) issues.push({ severity: 'error', message: `${v.method.toUpperCase()} ${v.path}: target endpoint is required`, target: r.id, rule: 'rest-to' });
+      else if (v.to.startsWith('direct:') && !consumers.has(v.to.split('?')[0])) {
+        issues.push({ severity: 'warning', message: `${v.method.toUpperCase()} ${v.path} → ${v.to}: no route in this file consumes it`, target: r.id, rule: 'rest-target' });
+      }
+    }
+  }
+  if ((file.rests ?? []).length) issues.push({ severity: 'info', message: 'REST DSL needs a restConfiguration (e.g. component: platform-http) in application.properties — the Spring Boot export adds it', rule: 'rest-configuration' });
   if (file.routes.length && !file.onExceptions.length && !file.routes.every((r) => hasDoTry(r.steps))) {
     issues.push({ severity: 'warning', message: 'No error handling — consider adding an onException block or doTry', rule: 'error-handler' });
   }

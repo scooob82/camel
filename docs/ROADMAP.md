@@ -1,6 +1,6 @@
 # Camel Studio – stav projektu a roadmapa
 
-_Stav k 21. 11. 2026 · commit `d2e7192`_
+_Stav k 21. 11. 2026_
 
 Legenda: ✅ hotovo · 🟡 částečně · ⬜ zbývá · 🔶 rozhodnutí na tobě
 
@@ -13,101 +13,83 @@ Odhady pracnosti jsou hrubé a orientační (S = do 1 dne, M = 2–4 dny, L = 1�
 | Fáze | Stav | Odhad zbývající práce |
 |---|---|---|
 | 1 – MVP: frontend | ✅ hotovo | – |
-| 1 – MVP: backend, účty, nasazení | ⬜ | L |
-| 1.5 – Dotažení builderu | ⬜ | L |
+| 1 – MVP: backend, účty, nasazení | ✅ hotovo, čeká na nasazení | S (nasazení, rozhodnutí) |
+| 1.5 – Dotažení builderu | ✅ hotovo kromě částí, které potřebují Java runtime | – (zbytek ve fázi 2) |
 | 2 – Pro: Run & Debug | ⬜ | XL |
 | 3 – Transformation Lab | ⬜ | L–XL |
 | 4 – Migration Center | ⬜ | XL |
 | 5 – AI, Team, Enterprise | ⬜ | XL |
 
-**Hotová je asi třetina MVP a zhruba 15 % celé vize.** Builder, jádro produktu, je hotový a funkční. Do veřejného spuštění MVP chybí hlavně backend (účty, ukládání na server), nasazení a pár rozhodnutí (název, doména). Placené moduly (fáze 2–5) jsou zatím jen v plánu a jsou to největší kusy práce.
+**MVP je hotové a připravené k nasazení, celkově asi 35 % vize.** Chybí rozhodnutí o názvu a doméně, první nasazení na hosting a ověření v CI. Placené moduly (fáze 2–5) jsou zatím jen v plánu.
+
+Testy: 77 unit testů jádra, 2 testy generátoru katalogu, 53 end-to-end testů API, 3 browserové scénáře (Playwright) přes aplikaci + API.
 
 ---
 
-## ✅ Hotovo (fáze 1 – frontend)
+## ✅ Fáze 1 – MVP
 
-### Jádro (`src/core`, pokryto 47 unit testy)
-- ✅ Kanonický model routy (jediný zdroj pravdy pro plátno i editory)
-- ✅ YAML DSL: import i export, obousměrná synchronizace
-- ✅ XML DSL (xml-io): import i export, obousměrná synchronizace, vlastní XML parser bez závislostí
-- ✅ Java DSL: export (RouteBuilder)
-- ✅ Neznámé kroky a top-level prvky YAML se při importu neztratí
-- ✅ 25 EIP: to, toD, wireTap, log, setBody, transform, setHeader, setProperty, removeHeader, convertBodyTo, marshal, unmarshal, bean, process, filter, choice, split, aggregate, multicast, loop, idempotentConsumer, delay, doTry/doCatch/doFinally, transacted, stop
-- ✅ onException s redelivery politikou
-- ✅ Katalog 40 komponent s nejpoužívanějšími parametry (ručně kurátorovaný)
-- ✅ Validace a lint: povinná pole, platnost URI, consumer/producer, HTTP bez timeoutu, hesla natvrdo v URI, aggregate bez completion, prázdné větve, duplicitní route id, chybějící error handling
-- ✅ Tester výrazů JSONPath (vlastní evaluátor) a XPath (v prohlížeči)
-- ✅ Dokumentace: Mermaid diagram a tabulka endpointů
-- ✅ Export: ZIP s routami a spustitelný Spring Boot projekt (YAML/XML/Java, správné startery, application.properties s placeholdery, Dockerfile, README)
+### Builder a jádro
+- ✅ Kanonický model routy, obousměrná synchronizace YAML ↔ XML ↔ plátno, export Java DSL
+- ✅ Validace a lint, tester JSONPath / XPath, Mermaid dokumentace
+- ✅ Export: ZIP s routami a spustitelný Spring Boot projekt (YAML/XML/Java)
+- ✅ Úvodní stránka, dashboard, Knowledge Base, command palette, tmavý/světlý režim
 
-### Aplikace
-- ✅ Úvodní stránka podle návrhu designu, se živým náhledem builderu
-- ✅ Dashboard: projekty, statistiky, vyhledávání, nový projekt (prázdný nebo z receptu), import souboru, duplikace, mazání s potvrzením
-- ✅ Builder:
-  - drag & drop z palety, vkládání přes „+“, přesun uzlů, duplikace, mazání
-  - undo/redo, zoom, měnitelná šířka panelů, skrývání panelů
-  - inspektor vlastností (endpoint formulář podle katalogu, editor výrazů, vlastnosti EIP)
-  - záložky YAML / XML / Java / Docs
-  - lišta validace s proklikem na problémový uzel
-  - verze projektu (Ctrl+S), import do projektu
-  - klávesové zkratky (Del, Ctrl+Z, Ctrl+Shift+Z, Ctrl+D, Esc)
-- ✅ Knowledge Base: 12 receptů ve 3 DSL, reference EIP a komponent, vyhledávání, „Open in Builder“
-- ✅ Command palette (Ctrl/Cmd+K), tmavý a světlý režim, toasty, empty states
-- ✅ Responzivita: builder desktop-first, ostatní stránky plně responzivní
-- ✅ Obchodní podmínky a Privacy (koncept)
-- ✅ Build přes esbuild do `dist/`, `.htaccess` pro Apache (cache, bezpečnostní hlavičky)
+### Backend a účty (čisté PHP 8.2, bez závislostí)
+- ✅ API `/api/v1`: PDO (MariaDB v produkci, SQLite pro vývoj a testy), migrace (CLI i přes HTTP se setup tokenem)
+- ✅ Registrace, přihlášení, odhlášení, ověření e-mailu, zapomenuté heslo, reset hesla
+- ✅ Session cookies (HttpOnly, SameSite, Secure), CSRF tokeny, jen JSON, rate limiting v DB, odhlášení ostatních zařízení po změně hesla
+- ✅ Účet: změna jména a hesla, GDPR export dat, smazání účtu
+- ✅ Projekty a verze přes API, limity podle tarifu (Free/Pro/Team), detekce konfliktů (dva taby nebo zařízení → 409 a načtení aktuální verze)
+- ✅ Frontend: dva režimy (prohlížeč / účet), sériová fronta zápisů, indikátor „Saving / Saved to cloud“, import projektů z prohlížeče do účtu
+- ✅ Sdílení projektu odkazem jen pro čtení, stránka sdíleného projektu s „Duplicate to my projects“
+- ✅ E-maily přes SMTP (STARTTLS/SSL), PHP mail() nebo do souboru (vývoj)
+- ✅ Denní údržba přes cron: čištění tokenů a zálohy DB do `api/storage/backups`
 
----
+### Nasazení a kvalita
+- ✅ Build vytvoří jednu složku `dist/` (aplikace + statické KB stránky + API) na nahrání přes SFTP
+- ✅ GitHub Actions: CI (unit testy, PHP lint, API testy, build, Playwright) a Deploy (SFTP přes lftp + migrace)
+- ✅ Prettier, EditorConfig, návod [DEPLOY.md](DEPLOY.md)
+- ✅ Code splitting: builder a jszip se načítají až při potřebě
 
-## ⬜ Zbývá do spuštění MVP (fáze 1)
+### Obsah a SEO
+- ✅ Knowledge Base rozšířena na 20 receptů
+- ✅ Statické HTML stránky `/kb/` a `/kb/<recept>/` pro vyhledávače, sitemap.xml, robots.txt, Open Graph a JSON-LD
 
-### Rozhodnutí 🔶
-- 🔶 **Název a doména.** „camelapache“ / camelapache.com je podle trademark policy ASF riskantní. Doporučení: vlastní značka + podtitul „for Apache Camel“. Změna = `src/config/brand.ts` + `index.html`.
-- 🔶 Ověřit verze v generovaném projektu (Camel 4.10.0, Spring Boot 3.4.4), případně přejít na aktuální LTS.
-
-### Backend – Laravel API (L)
-- ⬜ Kostra Laravel aplikace, `/api/v1`, MariaDB migrace
-- ⬜ Registrace, přihlášení (Sanctum, session + CSRF), ověření e-mailu, reset hesla
-- ⬜ API pro projekty a verze (CRUD), napojení přes existující `ProjectRepository`
-- ⬜ Migrace projektů z prohlížeče do účtu po prvním přihlášení
-- ⬜ Rate limiting, validace vstupů, role/oprávnění, pole tarifu (Free/Pro/Team)
-- ⬜ Transakční e-maily (SMTP)
-- ⬜ Uživatelská nastavení a smazání účtu (GDPR)
-- ⬜ Ověřit na VMS Smart: Composer, artisan, cron (`schedule:run`). Jinak build `vendor` v GitHub Actions.
-
-### Nasazení a kvalita (M)
-- ⬜ `package-lock.json` (vznikne prvním `npm install`)
-- ⬜ Spustit `npm run typecheck` s typy Reactu a opravit případné chyby
-- ⬜ ESLint + Prettier konfigurace
-- ⬜ Playwright E2E testy do repa (smoke test zatím existuje jen mimo repo)
-- ⬜ GitHub Actions: test + build + deploy přes rsync/SFTP
-- ⬜ Monitoring chyb (Sentry nebo podobný) a analytika šetrná k soukromí
-- ⬜ Zálohy DB mimo hosting
-
-### Obsah a SEO (M)
-- ⬜ Hash routing (`#/kb/...`) vyhledávače špatně indexují. Předgenerovat statické HTML stránky Knowledge Base při buildu (nebo je servírovat z Laravelu).
-- ⬜ Sitemap, meta tagy, Open Graph obrázky
-- ⬜ Rozšířit Knowledge Base z 12 na 20+ receptů
-- ⬜ Lokalizace CZ/EN (zatím jen angličtina)
-- ⬜ Finální znění obchodních podmínek a GDPR; cookie lišta až s analytikou
+### Zbývá z fáze 1
+- 🔶 **Název a doména:** „camelapache“ je kvůli ochranné známce ASF riskantní. Změna = `src/config/brand.ts` + `index.html`.
+- 🔶 Ověřit verze v generovaném projektu (Camel 4.10.0, Spring Boot 3.4.4).
+- ⬜ První nasazení na VMS Smart (S), nastavit SMTP a cron
+- ⬜ `npm run typecheck` s typy Reactu: tady se nedalo spustit, v CI zatím nepovinné (S)
+- ⬜ ESLint (S). Teď je jen Prettier.
+- ⬜ Lokalizace CZ/EN, rozhraní je zatím anglicky (M)
+- ⬜ Monitoring chyb (Sentry) a analytika šetrná k soukromí (S)
+- ⬜ Finální znění obchodních podmínek a GDPR; cookie lišta, až přibude analytika
+- ⬜ Admin rozhraní (uživatelé, tarify), zatím jen přímo v DB (M)
 
 ---
 
-## ⬜ Fáze 1.5 – Dotažení builderu (L)
+## ✅ Fáze 1.5 – Dotažení builderu
 
-- ⬜ Generovat katalog z oficiálního `camel-catalog` (všechny komponenty a parametry, automaticky s každou verzí Camelu)
-- ⬜ Import Java DSL (vyžaduje Java službu)
-- ⬜ Vyhodnocení Simple jazyka (vyžaduje Camel runtime, souvisí s fází 2)
-- ⬜ Contract-first: OpenAPI / AsyncAPI / WSDL → kostra rout
-- ⬜ Designer error handlingu s časovou osou redelivery
-- ⬜ Kamelety a route templates, vlastní knihovna šablon
-- ⬜ REST DSL, beans, routeConfiguration (dnes se v YAML jen zachovají, vizuálně je editovat nejde)
-- ⬜ Další EIP: throttle, circuitBreaker, enrich/pollEnrich, recipientList, routingSlip, dynamicRouter, saga, threads, onCompletion
-- ⬜ Plátno: posouvání tažením, výběr více uzlů, kopírovat/vložit, minimapa, sbalení bloků
-- ⬜ Sdílení projektu odkazem jen pro čtení (vyžaduje backend)
-- ⬜ Vizuální diff dvou verzí
-- ⬜ Code splitting (bundle má teď ~540 kB, jszip a builder načítat až při potřebě)
-- ⬜ Audit přístupnosti (klávesnicí ovladatelné plátno, kontrasty, screen reader)
+- ✅ Generátor katalogu z oficiálního `camel-catalog` (`npm run catalog`), který se slučuje s ručně vybranými komponentami. Otestovaný na vzorku ve formátu camel-catalog; reálný katalog vygeneruješ lokálně přes Maven.
+- ✅ Contract-first: OpenAPI 2/3 → REST DSL + routy, AsyncAPI 2/3 → consumer/producer routy, WSDL → CXF routa s rozcestníkem operací
+- ✅ Designer error handlingu: exponential back-off, max. prodleva, časová osa pokusů
+- ✅ Knihovna vlastních snippetů (uložit krok i s obsahem, vložit z palety)
+- ✅ REST DSL s vizuálním editorem operací
+- ✅ Nové EIP: throttle, circuitBreaker + onFallback, enrich, pollEnrich, recipientList, routingSlip, dynamicRouter, threads
+- ✅ Plátno: posouvání tažením, výběr více uzlů (Shift/Ctrl), kopírovat/vyjmout/vložit (i YAML ze schránky), sbalení bloků, šipky mezi kroky
+- ✅ Porovnání verzí (diff YAML)
+- ✅ Code splitting
+
+### Přesunuto do fáze 2 (potřebuje Java runtime)
+- ⬜ Import Java DSL
+- ⬜ Vyhodnocení Simple jazyka
+
+### Zbývá (menší)
+- ⬜ Vizuální editor pro beans a routeConfiguration (dnes se v YAML jen zachovají)
+- ⬜ EIP saga a onCompletion
+- ⬜ Minimapa plátna
+- ⬜ Snippety synchronizované s účtem (dnes jen v prohlížeči)
+- ⬜ Plný audit přístupnosti (základ je: klávesnice, ARIA, kontrasty)
 
 ---
 
@@ -116,6 +98,7 @@ Odhady pracnosti jsou hrubé a orientační (S = do 1 dne, M = 2–4 dny, L = 1�
 Vyžaduje samostatný VPS s Dockerem a Java/Camel runtime. Na VMS Smart to nepoběží.
 
 - ⬜ Java služba (Spring Boot + Camel 4) s API pro spuštění routy
+- ⬜ Import Java DSL a živé vyhodnocení Simple výrazů (používají stejnou Java službu)
 - ⬜ Izolovaný sandbox: kontejner na běh, limity CPU/RAM/času/sítě/FS, zakázané nebezpečné komponenty (exec, file mimo sandbox…)
 - ⬜ Mock endpointy a vstupní zprávy
 - ⬜ Trasování zprávy krok po kroku přímo v diagramu (body, headers, properties)
@@ -156,8 +139,8 @@ Vyžaduje samostatný VPS s Dockerem a Java/Camel runtime. Na VMS Smart to nepob
 ## Doporučené pořadí dalších kroků
 
 1. Rozhodnout název a doménu.
-2. Kvalita: `npm install`, `typecheck`, ESLint, E2E testy do repa, GitHub Actions.
-3. Laravel backend s účty a synchronizací projektů, nasazení na VMS Smart.
-4. SEO pro Knowledge Base a rozšíření obsahu, spuštění veřejné verze Free.
-5. Katalog z `camel-catalog` a další EIP (fáze 1.5).
+2. Nasadit na VMS Smart podle [DEPLOY.md](DEPLOY.md): konfigurace, migrace, cron se zálohami, SMTP.
+3. Pustit CI na GitHubu a opravit, co ukáže `typecheck` s typy Reactu (pak ho zapnout jako povinný).
+4. Vygenerovat katalog z `camel-catalog` (`npm run catalog`) a commitnout `src/content/catalog.generated.json`.
+5. Veřejné spuštění Free verze, Google Search Console + sitemap.
 6. VPS + Java runtime, pak Run & Debug jako první placený modul.

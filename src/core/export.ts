@@ -1,4 +1,3 @@
-import JSZip from 'jszip';
 import { COMPONENT_BY_SCHEME } from './catalog';
 import { docsMarkdown } from './docs';
 import { className, toJava } from './java';
@@ -47,9 +46,15 @@ export function requiredStarters(file: CamelFile, dsl: ExportDsl): string[] {
     if (s.props.uri) addUri(s.props.uri);
     if ((s.type === 'marshal' || s.type === 'unmarshal') && FORMAT_STARTERS[s.props.format]) set.add(FORMAT_STARTERS[s.props.format]);
     if (s.type === 'bean') set.add('camel-bean-starter');
+    if (s.type === 'circuitBreaker') set.add('camel-resilience4j-starter');
     const langs = [s.expression?.language, ...(s.branches ?? []).map((b) => b.expression?.language)];
     for (const l of langs) if (l && LANGUAGE_STARTERS[l]) set.add(LANGUAGE_STARTERS[l]);
   });
+  if ((file.rests ?? []).length) {
+    set.add('camel-rest-starter');
+    set.add('camel-platform-http-starter');
+    for (const r of file.rests ?? []) for (const v of r.verbs) addUri(v.to);
+  }
   return [...set].sort((a, b) => (a === 'camel-spring-boot-starter' ? -1 : b === 'camel-spring-boot-starter' ? 1 : a.localeCompare(b)));
 }
 
@@ -159,6 +164,7 @@ public class Application {
         `spring.application.name=${artifact}`,
         'camel.springboot.main-run-controller=true',
         'management.endpoints.web.exposure.include=health,info',
+        ...((file.rests ?? []).length ? ['', '# REST DSL', 'camel.rest.component=platform-http', 'camel.rest.binding-mode=auto'] : []),
         '',
         ...(props.length ? ['# Placeholders used by the routes — fill in real values (or use environment variables)', ...props.map((p) => `${p}=`)] : []),
         '',
@@ -218,6 +224,8 @@ export function routeFiles(file: CamelFile, projectName: string): GeneratedFile[
 }
 
 export async function zip(files: GeneratedFile[], root?: string): Promise<Blob> {
+  // loaded on demand to keep the initial bundle small
+  const { default: JSZip } = await import('jszip');
   const z = new JSZip();
   for (const f of files) z.file(root ? `${root}/${f.path}` : f.path, f.content);
   return z.generateAsync({ type: 'blob' });

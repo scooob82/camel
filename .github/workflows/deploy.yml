@@ -1,0 +1,57 @@
+name: Deploy
+
+# Uploads dist/ (static app + PHP API) to the hosting over SFTP, then runs DB migrations.
+# Needs repository secrets: SFTP_HOST, SFTP_USER, SFTP_PASSWORD, SFTP_PATH (web root, e.g. /www)
+# Optional: SETUP_TOKEN (same value as setup_token in cas-config.php) and variable SITE_URL.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: deploy
+
+jobs:
+  deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+      - name: Check secrets
+        id: secrets
+        run: echo "ok=${{ secrets.SFTP_HOST != '' }}" >> "$GITHUB_OUTPUT"
+      - name: Upload over SFTP
+        if: steps.secrets.outputs.ok == 'true'
+        env:
+          HOST: ${{ secrets.SFTP_HOST }}
+          USER: ${{ secrets.SFTP_USER }}
+          PASS: ${{ secrets.SFTP_PASSWORD }}
+          TARGET: ${{ secrets.SFTP_PATH }}
+        run: |
+          sudo apt-get install -y lftp >/dev/null
+          lftp -c "set sftp:auto-confirm yes; set net:max-retries 3; open -u \"$USER\",\"$PASS\" sftp://$HOST; \
+            mirror --reverse --delete --verbose --parallel=4 \
+              --exclude-glob api/config.php \
+              --exclude-glob api/storage/* \
+              --exclude-glob cas-config.php \
+              dist/ \"$TARGET\""
+      - name: Run migrations
+        if: steps.secrets.outputs.ok == 'true'
+        env:
+          TOKEN: ${{ secrets.SETUP_TOKEN }}
+          SITE: ${{ vars.SITE_URL }}
+        run: |
+          if [ -n "$TOKEN" ] && [ -n "$SITE" ]; then
+            curl -fsS -X POST -H "X-Setup-Token: $TOKEN" "$SITE/api/v1/setup/migrate"
+          else
+            echo "SETUP_TOKEN or SITE_URL not set — run 'php api/bin/migrate.php' on the server"
+          fi

@@ -40,10 +40,18 @@ export const STEP_TYPES = [
   'doTry',
   'transacted',
   'stop',
+  'throttle',
+  'circuitBreaker',
+  'enrich',
+  'pollEnrich',
+  'recipientList',
+  'routingSlip',
+  'dynamicRouter',
+  'threads',
 ] as const;
 export type StepType = (typeof STEP_TYPES)[number];
 
-export type BranchKind = 'when' | 'otherwise' | 'doCatch' | 'doFinally';
+export type BranchKind = 'when' | 'otherwise' | 'doCatch' | 'doFinally' | 'onFallback';
 
 export interface Branch {
   id: string;
@@ -91,12 +99,38 @@ export interface OnException {
   handled: boolean;
   maximumRedeliveries?: string;
   redeliveryDelay?: string;
+  useExponentialBackOff?: boolean;
+  backOffMultiplier?: string;
+  maximumRedeliveryDelay?: string;
   steps: Step[];
+}
+
+export const HTTP_VERBS = ['get', 'post', 'put', 'patch', 'delete', 'head'] as const;
+export type HttpVerb = (typeof HTTP_VERBS)[number];
+
+export interface RestVerb {
+  id: string;
+  method: HttpVerb;
+  path: string;
+  to: string;
+  consumes?: string;
+  produces?: string;
+  description?: string;
+}
+
+/** REST DSL block: maps HTTP operations to routes (usually direct: endpoints). */
+export interface RestDef {
+  id: string;
+  kind: 'rest';
+  path: string;
+  description?: string;
+  verbs: RestVerb[];
 }
 
 export interface CamelFile {
   routes: Route[];
   onExceptions: OnException[];
+  rests?: RestDef[];
   /** Top-level YAML elements we do not model (beans, rest, ...). Re-emitted untouched in YAML. */
   extras?: unknown[];
 }
@@ -117,6 +151,10 @@ export function emptyFile(): CamelFile {
 
 export function newRoute(routeId = 'route-1', uri = 'timer:tick?period=5000'): Route {
   return { id: uid('r'), kind: 'route', routeId, from: { uri }, steps: [] };
+}
+
+export function newRest(): RestDef {
+  return { id: uid('rest'), kind: 'rest', path: '/api', verbs: [{ id: uid('verb'), method: 'get', path: '/hello', to: 'direct:hello' }] };
 }
 
 export function newOnException(): OnException {
@@ -167,10 +205,16 @@ export function endpoints(file: CamelFile): { routeId: string; direction: 'consu
     visit(r.routeId, r.steps);
   }
   for (const ex of file.onExceptions) visit(`onException(${ex.exceptions.join(', ')})`, ex.steps);
+  for (const r of file.rests ?? []) for (const v of r.verbs) out.push({ routeId: `rest ${v.method.toUpperCase()} ${joinPath(r.path, v.path)}`, direction: 'producer', type: 'rest', uri: v.to });
   return out;
 }
 
 export function schemeOf(uri: string): string {
   const i = uri.indexOf(':');
   return i > 0 ? uri.slice(0, i) : uri;
+}
+
+export function joinPath(a: string, b: string): string {
+  const x = `/${a}/${b}`.replace(/\/+/g, '/');
+  return x.length > 1 ? x.replace(/\/$/, '') : x;
 }

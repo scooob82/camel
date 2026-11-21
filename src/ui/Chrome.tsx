@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { contextCommands, openPalette, paletteOpen, type Command } from '../app/commands';
 import { navigate, href, type Route } from '../app/router';
+import { authStore } from '../app/session';
 import { appStore, projects, themeStore, toastStore, toggleTheme, useStore } from '../app/store';
 import { BRAND } from '../config/brand';
 import { RECIPES } from '../content/recipes';
@@ -29,6 +30,29 @@ export function ThemeButton() {
   );
 }
 
+export function AccountButton() {
+  const auth = useStore(authStore, (s) => s);
+  if (auth.status === 'authenticated' && auth.user) {
+    const label = auth.user.name || auth.user.email;
+    return (
+      <a className="btn ghost hide-xs account-btn" href={href('/account')} title={auth.user.email}>
+        <span className="avatar" aria-hidden>
+          {label.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="account-name">{label}</span>
+      </a>
+    );
+  }
+  if (auth.status === 'anonymous') {
+    return (
+      <a className="btn ghost hide-xs" href={href('/login')}>
+        Sign in
+      </a>
+    );
+  }
+  return null;
+}
+
 export function TopBar({ route, onSection }: { route: Route; onSection?: (id: string) => void }) {
   const link = (label: string, path: string, active: boolean) => (
     <a className={active ? 'active' : undefined} href={href(path)}>
@@ -54,6 +78,7 @@ export function TopBar({ route, onSection }: { route: Route; onSection?: (id: st
             ⌘ K
           </button>
           <ThemeButton />
+          <AccountButton />
           <button className="btn primary" onClick={() => navigate('/dashboard')}>
             Open Studio <span aria-hidden>↗</span>
           </button>

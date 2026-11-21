@@ -350,6 +350,209 @@ export const RECIPES: Recipe[] = [
             uri: kafka:heartbeats?brokers={{kafka.brokers}}
 `,
   },
+  {
+    slug: 'rest-api-dsl',
+    title: 'REST API with the REST DSL',
+    category: 'HTTP & API',
+    tags: ['rest', 'platform-http', 'json'],
+    summary: 'Expose HTTP operations and route each one to its own Camel route.',
+    body: [
+      'The REST DSL describes your HTTP API — paths, methods, content types — separately from the integration logic. Every operation hands the request to a route, usually through a direct: endpoint.',
+      'Keeping the API surface in one place makes it easy to review, document and later generate from (or into) an OpenAPI contract.',
+    ],
+    tips: ['Set camel.rest.component=platform-http (the Spring Boot export does it for you).', 'Start from an OpenAPI file: import it on the Projects page and the REST DSL and routes are generated.'],
+    yaml: `- rest:
+    path: /api
+    get:
+      - path: /orders/{id}
+        produces: application/json
+        to: direct:get-order
+    post:
+      - path: /orders
+        consumes: application/json
+        to: direct:create-order
+- route:
+    id: get-order
+    from:
+      uri: direct:get-order
+      steps:
+        - to:
+            uri: sql:select * from orders where id = :#\${header.id}?outputType=SelectOne
+        - marshal:
+            json: {}
+- route:
+    id: create-order
+    from:
+      uri: direct:create-order
+      steps:
+        - unmarshal:
+            json: {}
+        - to:
+            uri: jms:queue:orders.incoming
+        - setHeader:
+            name: CamelHttpResponseCode
+            constant: "202"
+`,
+  },
+  {
+    slug: 'circuit-breaker',
+    title: 'Circuit breaker with fallback',
+    category: 'Reliability',
+    tags: ['circuitBreaker', 'resilience4j'],
+    summary: 'Stop hammering a failing service and answer from a fallback instead.',
+    body: [
+      'When a downstream service is struggling, retries make it worse. A circuit breaker counts failures and, once a threshold is reached, opens the circuit: calls fail fast and the onFallback steps run instead.',
+      'After a cool-down the breaker lets a few calls through to test whether the service has recovered.',
+    ],
+    tips: ['Tune thresholds with camel.resilience4j.* properties.', 'Combine with a timeout on the HTTP call — a slow service is as harmful as a failing one.'],
+    yaml: `- route:
+    id: price-with-breaker
+    from:
+      uri: direct:price
+      steps:
+        - circuitBreaker:
+            steps:
+              - to:
+                  uri: http://pricing:8080/api/price?connectTimeout=1000&responseTimeout=3000
+            onFallback:
+              steps:
+                - log:
+                    message: Pricing circuit open, using default price
+                    loggingLevel: WARN
+                - setBody:
+                    constant: '{"price":null,"source":"fallback"}'
+`,
+  },
+  {
+    slug: 'throttle-calls',
+    title: 'Throttle calls to a partner',
+    category: 'Reliability',
+    tags: ['throttle', 'rate limit'],
+    summary: 'Respect a partner’s rate limit by capping concurrent requests.',
+    body: ['Partner APIs often allow only a few parallel calls. The throttle EIP limits how many exchanges pass at the same time, so bursts are smoothed out instead of rejected by the partner.'],
+    tips: ['Use rejectExecution if you prefer failing fast over queueing.'],
+    yaml: `- route:
+    id: partner-throttled
+    from:
+      uri: seda:partner-calls?concurrentConsumers=20
+      steps:
+        - throttle:
+            constant: "5"
+        - to:
+            uri: https://partner.example.com/api?connectTimeout=2000&responseTimeout=10000
+`,
+  },
+  {
+    slug: 'content-enricher',
+    title: 'Content Enricher',
+    category: 'EIP',
+    tags: ['enrich', 'pollEnrich'],
+    summary: 'Add data from another system to the message you are processing.',
+    body: [
+      'The content enricher calls another endpoint and merges its reply into the current message. enrich does a request/reply call; pollEnrich consumes a message (a file, a queue entry) instead.',
+      'Without an aggregation strategy the reply replaces the body — usually you want a strategy that merges both.',
+    ],
+    tips: ['Use pollEnrich with a timeout, otherwise it may wait forever.'],
+    yaml: `- route:
+    id: enrich-order
+    from:
+      uri: jms:queue:orders
+      steps:
+        - setHeader:
+            name: customerId
+            jsonpath: $.customerId
+        - enrich:
+            constant: direct:customer-lookup
+            aggregationStrategy: "#customerMerge"
+        - pollEnrich:
+            constant: file:data/discounts?noop=true&fileName=current.json
+            timeout: 2000
+            aggregationStrategy: "#discountMerge"
+        - to:
+            uri: direct:price-order
+`,
+  },
+  {
+    slug: 'recipient-list',
+    title: 'Recipient List',
+    category: 'EIP',
+    tags: ['recipientList', 'dynamic routing'],
+    summary: 'Send each message to a list of destinations decided at runtime.',
+    body: ['Where a multicast has a fixed list of outputs, the recipient list computes it per message — from a header, a database lookup or a bean.'],
+    tips: ['Enable parallelProcessing when the recipients are independent.'],
+    yaml: `- route:
+    id: notify-subscribers
+    from:
+      uri: kafka:events?brokers={{kafka.brokers}}
+      steps:
+        - setHeader:
+            name: recipients
+            simple: \${bean:subscriptions?method=endpointsFor(\${header.type})}
+        - recipientList:
+            header: recipients
+            delimiter: ","
+            parallelProcessing: true
+`,
+  },
+  {
+    slug: 'sftp-polling',
+    title: 'Poll an SFTP server',
+    category: 'Files',
+    tags: ['sftp', 'file transfer'],
+    summary: 'Download files from a partner SFTP and archive them locally.',
+    body: ['File transfer is still the backbone of many B2B integrations. Camel polls the remote directory, downloads new files and moves them to an archive folder on the server so they are not picked up twice.'],
+    tips: ['Never put the password in the URI — use {{placeholders}} or a private key.', 'Use readLock=changed on folders where the partner writes slowly.'],
+    yaml: `- route:
+    id: partner-sftp
+    from:
+      uri: sftp:sftp.partner.example.com:22/outbox?username={{partner.user}}&privateKeyFile={{partner.key}}&move=.archive&delay=60000
+      steps:
+        - log:
+            message: Downloaded \${header.CamelFileName}
+        - to:
+            uri: file:data/inbox
+`,
+  },
+  {
+    slug: 'json-to-xml',
+    title: 'JSON to XML',
+    category: 'Transformation',
+    tags: ['marshal', 'jackson', 'xml'],
+    summary: 'Receive JSON, convert it to XML and send it to a legacy system.',
+    body: ['Many legacy systems still speak XML. Unmarshal the JSON into a Java structure, then marshal it as XML — or use an XSLT for anything more than a 1:1 mapping.'],
+    tips: ['For complex mappings, generate the target XML with XSLT 3.0 instead of relying on default bean mapping.'],
+    yaml: `- route:
+    id: json-to-legacy
+    from:
+      uri: platform-http:/api/legacy/orders?httpMethodRestrict=POST
+      steps:
+        - unmarshal:
+            json: {}
+        - marshal:
+            jacksonXml: {}
+        - to:
+            uri: jms:queue:legacy.orders
+`,
+  },
+  {
+    slug: 'sql-to-kafka',
+    title: 'Database changes to Kafka',
+    category: 'Messaging',
+    tags: ['sql', 'kafka', 'polling'],
+    summary: 'Poll new rows from a table and publish them as events.',
+    body: ['A simple outbox pattern: the application writes events into a table, Camel polls unprocessed rows, publishes them to Kafka and marks them as sent in the same transaction.'],
+    tips: ['Use onConsume to flag rows as processed.', 'For high volumes prefer CDC (Debezium) over polling.'],
+    yaml: `- route:
+    id: outbox-publisher
+    from:
+      uri: sql:select * from outbox where sent = false order by id?onConsume=update outbox set sent = true where id = :#id&delay=5000
+      steps:
+        - marshal:
+            json: {}
+        - to:
+            uri: kafka:outbox-events?brokers={{kafka.brokers}}
+`,
+  },
 ];
 
 export const RECIPE_BY_SLUG: Record<string, Recipe> = Object.fromEntries(RECIPES.map((r) => [r.slug, r]));

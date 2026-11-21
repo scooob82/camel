@@ -12,45 +12,43 @@ Spring Boot project; Knowledge Base with recipes.
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173 (watch + rebuild)
-npm run build      # → dist/ (static files)
-npm test           # core unit tests (parsers, serializers, validation, export)
-npm run typecheck  # tsc --noEmit
+npm run dev        # frontend only, http://localhost:5173 (projects stay in the browser)
+
+npm run build      # → dist/ (app + static KB pages + PHP API)
+npm run migrate    # SQLite dev database
+npm run serve      # app + API on http://127.0.0.1:8080
+
+npm test           # core unit tests + catalog generator
+npm run test:api   # PHP API end-to-end tests (built-in server + SQLite)
+npm run test:e2e   # browser tests (Playwright) against dist/ + API
+npm run catalog    # regenerate the component catalog from camel-catalog
 ```
 
-Requires Node 20+.
+Requires Node 20+ and PHP 8.2+ (pdo_sqlite for local dev, pdo_mysql in production).
 
-## Deploy (VMS Smart / any Apache)
+## Deploy
 
-1. `npm run build`
-2. Upload the **content** of `dist/` (including `.htaccess`) via SFTP/rsync to the web root.
+See [docs/DEPLOY.md](docs/DEPLOY.md). In short: `npm run build`, upload `dist/` over SFTP,
+put `cas-config.php` above the web root, run migrations. GitHub Actions does build + tests (CI)
+and SFTP upload + migrations (Deploy).
 
-Routing uses `#/hash` URLs, so no rewrite rules are needed.
-
-```bash
-rsync -avz --delete dist/ user@host:/path/to/www/
-```
-
-## What is in the MVP
+## What is in the app
 
 | Area | Status |
 |---|---|
-| Visual builder: drag & drop, click-to-insert, move, duplicate, undo/redo, zoom, resizable panels | ✅ |
-| 25 EIPs incl. choice, filter, split, aggregate, multicast, loop, idempotentConsumer, doTry/doCatch/doFinally | ✅ |
-| `onException` error handlers with redelivery | ✅ |
-| Component catalog (40 components) with option forms | ✅ curated subset |
-| YAML DSL import/export, editable, two-way sync | ✅ |
-| XML DSL import/export, editable, two-way sync | ✅ |
-| Java DSL | ✅ export only |
-| Unknown YAML steps / top-level elements preserved | ✅ |
-| Validation + lint (required fields, URI checks, HTTP timeouts, hard-coded secrets, error handling…) | ✅ |
-| JSONPath / XPath expression tester | ✅ (Simple needs a runtime → Run & Debug) |
-| Export: route files ZIP, Spring Boot project ZIP (YAML / XML / Java), Mermaid + endpoint docs | ✅ |
-| Projects, version history, local persistence | ✅ browser storage |
-| Knowledge Base: 12 recipes, EIP & component reference, open in builder | ✅ |
-| Command palette (Ctrl/Cmd K), dark/light mode, responsive | ✅ |
-| Accounts, cloud sync (Laravel API) | ⏳ next milestone |
-| Run & Debug, Transformation Lab, Migration Center, AI | ⏳ roadmap |
+| Visual builder: drag & drop, quick insert, move, multi-select, copy/paste, undo/redo, zoom, pan, collapse, keyboard navigation | ✅ |
+| 33 EIPs incl. choice, split, aggregate, circuitBreaker, throttle, enrich, recipientList, doTry… | ✅ |
+| onException with redelivery + exponential back-off and a timeline preview | ✅ |
+| REST DSL (visual editor) | ✅ |
+| Contract-first: OpenAPI / AsyncAPI / WSDL → routes | ✅ |
+| YAML & XML DSL two-way sync, Java DSL export | ✅ |
+| Component catalog: curated + generator from the official camel-catalog | ✅ |
+| Validation & lint, JSONPath / XPath tester | ✅ |
+| Snippets library, version history with diff | ✅ |
+| Export: route files, Spring Boot project (YAML/XML/Java), Mermaid docs | ✅ |
+| Accounts (register, verify e-mail, reset password, GDPR export, delete), cloud sync, conflict detection, read-only share links | ✅ |
+| Knowledge Base: 20 recipes, static SEO pages + sitemap | ✅ |
+| Java DSL import, Simple evaluation, Run & Debug | ⏳ need a Java runtime (phase 2) |
 
 ## Roadmap
 
@@ -71,9 +69,14 @@ src/
     edit.ts        immutable tree operations
     docs.ts        Mermaid + endpoint table
     export.ts      Spring Boot project generator, ZIP
+    contract.ts    OpenAPI / AsyncAPI / WSDL scaffolding
+    diff.ts        line diff for version comparison
     jsonpath.ts    JSONPath evaluator for the tester
-  content/     Knowledge Base recipes (plain Camel YAML)
-  app/         router (hash), stores, persistence boundary, commands
+  content/     Knowledge Base recipes (plain Camel YAML), generated catalog
+  prerender.tsx  static KB pages for search engines (run by the build)
+api/           PHP 8.2 API without dependencies (see api/src, api/migrations, api/tests)
+tests/e2e/     Playwright scenarios
+  app/         router (hash), stores, API client, session, sync, snippets, commands
   features/    landing, dashboard, builder, kb, legal
   ui/          shared UI: code editor, modal, palette, chrome
   styles/      design tokens + styles (dark/light)
@@ -83,8 +86,13 @@ Key decisions:
 
 - **Canonical model** (`core/model.ts`) mirrors the Camel YAML DSL. The canvas and all
   editors are views of it; text edits only update the model when they parse.
-- **Persistence boundary**: `ProjectRepository` in `app/store.ts`. The MVP uses
-  `localStorage`; the Laravel `/api/v1/projects` backend will implement the same interface.
+- **Two storage modes** (`app/store.ts`): anonymous users keep projects in `localStorage`;
+  signed-in users sync through `/api/v1` with a serial write queue, debounced updates and
+  optimistic concurrency (revision → 409 on conflicts). Browser projects can be imported
+  into the account.
+- **API without a framework**: the hosting only offers PHP, so the API is plain PHP 8.2 with
+  PDO (MariaDB in production, SQLite in dev/tests), native sessions, CSRF tokens, DB-backed
+  rate limiting and an SMTP mailer. Nothing to `composer install` on the server.
 - **Zero heavy dependencies**: React, `yaml`, `jszip`, built with esbuild. The canvas,
   code editor, router and store are small in-house implementations. React Flow / Monaco can
   replace them later behind the same props if needed.

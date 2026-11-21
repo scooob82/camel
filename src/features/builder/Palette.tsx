@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import { COMPONENTS, COMPONENT_CATEGORIES } from '../../core/catalog';
 import { EIPS, EIP_CATEGORIES } from '../../core/eip';
+import { snippetStore, snippets } from '../../app/snippets';
+import { useStore } from '../../app/store';
 import { DND_NEW, type DropPayload } from './Canvas';
 
 interface Item {
@@ -30,8 +32,9 @@ function match(i: Item, q: string) {
   return `${i.label} ${i.hint} ${i.group}`.toLowerCase().includes(q);
 }
 
-export function Palette({ onAdd, onAddErrorHandler, onAddRoute }: { onAdd(p: DropPayload): void; onAddErrorHandler(): void; onAddRoute(): void }) {
+export function Palette({ onAdd, onAddErrorHandler, onAddRoute, onAddRest }: { onAdd(p: DropPayload): void; onAddErrorHandler(): void; onAddRoute(): void; onAddRest(): void }) {
   const [q, setQ] = useState('');
+  const mySnippets = useStore(snippetStore, (s) => s);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => Object.fromEntries(COMPONENT_CATEGORIES.map((c) => [`Components · ${c}`, true])));
   const s = q.trim().toLowerCase();
   const items = useMemo(() => (s ? ITEMS.filter((i) => match(i, s)) : ITEMS), [s]);
@@ -56,8 +59,49 @@ export function Palette({ onAdd, onAddErrorHandler, onAddRoute }: { onAdd(p: Dro
             <button className="component" onClick={onAddErrorHandler} title="Global onException handler with retries">
               <i style={{ color: 'var(--red)' }}>⚑</i> Error handler <small>onException</small>
             </button>
+            <button className="component" onClick={onAddRest} title="REST DSL: map HTTP operations to routes">
+              <i style={{ color: 'var(--cyan)' }}>⇄</i> REST API <small>rest</small>
+            </button>
           </>
         )}
+        {(() => {
+          const list = mySnippets.filter((x) => !s || x.name.toLowerCase().includes(s));
+          if (!list.length) return null;
+          return (
+            <div>
+              <div className="group-title">
+                <span>My snippets</span>
+                <span>{list.length}</span>
+              </div>
+              {list.map((x) => (
+                <div
+                  key={x.id}
+                  className="component"
+                  draggable
+                  onDragStart={(e) => onDragStart(e, { kind: 'snippet', id: x.id })}
+                  onDragEnd={onDragEnd}
+                  onClick={() => onAdd({ kind: 'snippet', id: x.id })}
+                  onKeyDown={(e) => e.key === 'Enter' && onAdd({ kind: 'snippet', id: x.id })}
+                  role="button"
+                  tabIndex={0}
+                  title={`${x.name}\nDrag onto the canvas, or click to append.`}
+                >
+                  <i style={{ color: 'var(--purple)' }}>☆</i> <span className="snippet-name">{x.name}</span>
+                  <button
+                    className="snippet-del"
+                    aria-label={`Delete snippet ${x.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      snippets.remove(x.id);
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
         {GROUPS.map((g) => {
           const list = items.filter((i) => i.group === g);
           if (!list.length) return null;

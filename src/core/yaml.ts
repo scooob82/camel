@@ -1,6 +1,7 @@
 import YAML from 'yaml';
 import { EIP_BY_TYPE } from './eip';
 import {
+  HTTP_VERBS,
   LANGUAGES,
   STEP_TYPES,
   isKnown,
@@ -11,6 +12,8 @@ import {
   type KnownStep,
   type Language,
   type OnException,
+  type RestDef,
+  type RestVerb,
   type Route,
   type Step,
   type StepType,
@@ -106,6 +109,21 @@ export function stepToYaml(step: Step): Obj {
     case 'transacted':
     case 'stop':
       return { [step.type]: {} };
+    case 'throttle':
+    case 'enrich':
+    case 'pollEnrich':
+    case 'recipientList':
+    case 'routingSlip':
+    case 'dynamicRouter':
+      return { [step.type]: { ...exprObj(step.expression), ...propsObj(step) } };
+    case 'threads':
+      return { threads: propsObj(step) };
+    case 'circuitBreaker': {
+      const body: Obj = { steps: stepsArr(step.steps) };
+      const fb = (step.branches ?? []).find((b) => b.kind === 'onFallback');
+      if (fb) body.onFallback = { steps: stepsArr(fb.steps) };
+      return { circuitBreaker: body };
+    }
   }
 }
 
@@ -122,14 +140,36 @@ function onExceptionToYaml(ex: OnException): Obj {
   const rp: Obj = {};
   if (ex.maximumRedeliveries) rp.maximumRedeliveries = Number(ex.maximumRedeliveries) || ex.maximumRedeliveries;
   if (ex.redeliveryDelay) rp.redeliveryDelay = Number(ex.redeliveryDelay) || ex.redeliveryDelay;
+  if (ex.useExponentialBackOff) rp.useExponentialBackOff = true;
+  if (ex.backOffMultiplier) rp.backOffMultiplier = Number(ex.backOffMultiplier) || ex.backOffMultiplier;
+  if (ex.maximumRedeliveryDelay) rp.maximumRedeliveryDelay = Number(ex.maximumRedeliveryDelay) || ex.maximumRedeliveryDelay;
   if (Object.keys(rp).length) body.redeliveryPolicy = rp;
   body.steps = stepsArr(ex.steps);
   return { onException: body };
 }
 
+function restToYaml(r: RestDef): Obj {
+  const body: Obj = { path: r.path };
+  if (r.description) body.description = r.description;
+  for (const m of HTTP_VERBS) {
+    const verbs = r.verbs.filter((v) => v.method === m);
+    if (!verbs.length) continue;
+    body[m] = verbs.map((v) => {
+      const o: Obj = { path: v.path };
+      if (v.description) o.description = v.description;
+      if (v.consumes) o.consumes = v.consumes;
+      if (v.produces) o.produces = v.produces;
+      o.to = v.to;
+      return o;
+    });
+  }
+  return { rest: body };
+}
+
 export function toYaml(file: CamelFile): string {
   const items: unknown[] = [
     ...file.onExceptions.map(onExceptionToYaml),
+    ...(file.rests ?? []).map(restToYaml),
     ...file.routes.map(routeToYaml),
     ...(file.extras ?? []),
   ];
@@ -167,6 +207,13 @@ const KNOWN_KEYS: Record<string, string[]> = {
   multicast: ['parallelProcessing', 'stopOnException'],
   aggregate: ['aggregationStrategy', 'completionSize', 'completionTimeout'],
   idempotentConsumer: ['idempotentRepository'],
+  throttle: ['asyncDelayed', 'rejectExecution'],
+  enrich: ['aggregationStrategy'],
+  pollEnrich: ['timeout', 'aggregationStrategy'],
+  recipientList: ['delimiter', 'parallelProcessing', 'stopOnException'],
+  routingSlip: ['uriDelimiter'],
+  dynamicRouter: [],
+  threads: ['poolSize', 'maxPoolSize'],
   log: ['message', 'loggingLevel', 'logName'],
   bean: ['ref', 'method'],
   process: ['ref'],
@@ -270,6 +317,23 @@ export function parseStep(raw: unknown, path = 'step'): Step {
     case 'transacted':
     case 'stop':
       break;
+    case 'throttle':
+    case 'enrich':
+    case 'pollEnrich':
+    case 'recipientList':
+    case 'routingSlip':
+    case 'dynamicRouter':
+      step.expression = typeof v === 'string' ? { language: 'constant', expression: v } : parseExpression(o);
+      step.props = pickProps(t, o);
+      break;
+    case 'threads':
+      step.props = pickProps(t, o);
+      break;
+    case 'circuitBreaker': {
+      step.steps = parseSteps(o.steps, `${path}.circuitBreaker`);
+      step.branches = isObj(o.onFallback) ? [{ id: uid('b'), kind: 'onFallback', steps: parseSteps(o.onFallback.steps, `${path}.onFallback`) }] : [];
+      break;
+    }
   }
   return step;
 }
@@ -298,8 +362,24 @@ function parseOnException(o: Obj, index: number): OnException {
     handled: handled ? handled.expression === 'true' : false,
     maximumRedeliveries: rp.maximumRedeliveries !== undefined ? str(rp.maximumRedeliveries) : undefined,
     redeliveryDelay: rp.redeliveryDelay !== undefined ? str(rp.redeliveryDelay) : undefined,
+    useExponentialBackOff: rp.useExponentialBackOff === true || rp.useExponentialBackOff === 'true' ? true : undefined,
+    backOffMultiplier: rp.backOffMultiplier !== undefined ? str(rp.backOffMultiplier) : undefined,
+    maximumRedeliveryDelay: rp.maximumRedeliveryDelay !== undefined ? str(rp.maximumRedeliveryDelay) : undefined,
     steps: parseSteps(o.steps, `onException[${index}]`),
   };
+}
+
+function parseRest(o: Obj): RestDef {
+  const verbs: RestVerb[] = [];
+  for (const m of HTTP_VERBS) {
+    const list = Array.isArray(o[m]) ? (o[m] as unknown[]) : isObj(o[m]) ? [o[m]] : [];
+    for (const raw of list) {
+      if (!isObj(raw)) continue;
+      const to = isObj(raw.to) ? str(raw.to.uri) : str(raw.to);
+      verbs.push({ id: uid('verb'), method: m, path: str(raw.path) || '/', to, consumes: str(raw.consumes) || undefined, produces: str(raw.produces) || undefined, description: str(raw.description) || undefined });
+    }
+  }
+  return { id: uid('rest'), kind: 'rest', path: str(o.path) || '/', description: str(o.description) || undefined, verbs };
 }
 
 export function fromYaml(text: string): CamelFile {
@@ -320,6 +400,7 @@ export function fromYaml(text: string): CamelFile {
     if (key === 'route' && isObj(v)) file.routes.push(parseRoute(v, false, file.routes.length));
     else if (key === 'from' && isObj(v)) file.routes.push(parseRoute(v, true, file.routes.length));
     else if (key === 'onException' && isObj(v)) file.onExceptions.push(parseOnException(v, file.onExceptions.length));
+    else if (key === 'rest' && isObj(v) && HTTP_VERBS.some((m) => m in v) && !('verb' in v)) (file.rests ??= []).push(parseRest(v));
     else file.extras!.push(item);
   });
   if (!file.extras!.length) delete file.extras;

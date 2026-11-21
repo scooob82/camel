@@ -1,14 +1,21 @@
 {
   "name": "camelapache-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
-  "description": "Integration Studio for Apache Camel — visual route builder (MVP)",
+  "description": "Integration Studio for Apache Camel \u2014 visual route builder (MVP)",
   "type": "module",
   "scripts": {
     "dev": "node scripts/build.mjs --serve",
     "build": "node scripts/build.mjs",
-    "test": "node --import tsx --test src/core/core.test.ts",
-    "typecheck": "tsc --noEmit"
+    "serve": "php -S 127.0.0.1:8080 -t dist scripts/dev-router.php",
+    "migrate": "php api/bin/migrate.php",
+    "test": "node --import tsx --test src/core/core.test.ts && node --test scripts/catalog.test.mjs",
+    "test:api": "php api/tests/run.php",
+    "test:e2e": "node tests/e2e/run.mjs",
+    "test:all": "npm test && npm run test:api && npm run build && npm run test:e2e",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\"",
+    "catalog": "node scripts/generate-catalog.mjs"
   },
   "dependencies": {
     "jszip": "^3.10.1",
@@ -22,7 +29,9 @@
     "@types/react-dom": "^19.2.0",
     "esbuild": "^0.28.0",
     "tsx": "^4.20.0",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "playwright": "^1.50.0",
+    "prettier": "^3.5.0"
   },
   "engines": {
     "node": ">=20"
