@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { t } from '../../app/i18n';
 import { api, ApiError } from '../../app/api';
 import { href, navigate } from '../../app/router';
 import { projects, toast } from '../../app/store';
@@ -37,17 +38,17 @@ export function SharedPage({ token }: { token: string }) {
   if (error) {
     return (
       <main className="wrap page">
-        <EmptyState icon="⌁" title="Shared project not available" text={error} action={<a className="btn primary" href={href('/')}>Go home</a>} />
+        <EmptyState icon="⌁" title={t('Shared project not available')} text={error} action={<a className="btn primary" href={href('/')}>{t('Go home')}</a>} />
       </main>
     );
   }
-  if (!data) return <main className="wrap page"><p className="muted">Loading shared project…</p></main>;
+  if (!data) return <main className="wrap page"><p className="muted">{t('Loading shared project…')}</p></main>;
 
   return (
     <main className="wrap page">
       <div className="page-head">
         <div>
-          <div className="tag">Shared · read-only</div>
+          <div className="tag">{t('Shared · read-only')}</div>
           <h1>{data.name}</h1>
           <p>
             {data.description ? `${data.description} · ` : ''}
@@ -62,7 +63,7 @@ export function SharedPage({ token }: { token: string }) {
             navigate(`/builder/${p.id}`);
           }}
         >
-          Duplicate to my projects
+          {t('Duplicate to my projects')}
         </button>
       </div>
       <div className="card canvas" style={{ height: 420, overflow: 'auto', marginBottom: 20 }}>
@@ -76,7 +77,7 @@ export function SharedPage({ token }: { token: string }) {
             </button>
           ))}
         </div>
-        <CodeEditor value={code} lang={tab} readOnly label="Shared route source" />
+        <CodeEditor value={code} lang={tab} readOnly label={t('Shared route source')} />
       </div>
     </main>
   );

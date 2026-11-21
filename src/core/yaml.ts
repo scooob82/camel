@@ -12,8 +12,10 @@ import {
   type KnownStep,
   type Language,
   type OnException,
+  type BeanDef,
   type RestDef,
   type RestVerb,
+  type RouteConfigDef,
   type Route,
   type Step,
   type StepType,
@@ -55,7 +57,7 @@ function stepsArr(steps: Step[] | undefined): Obj[] {
   return (steps ?? []).map(stepToYaml);
 }
 
-export function stepToYaml(step: Step): Obj {
+function stepToYamlRaw(step: Step): Obj {
   if (!isKnown(step)) return { [step.name]: step.yaml ?? {} };
   const p = step.props;
   switch (step.type) {
@@ -118,6 +120,15 @@ export function stepToYaml(step: Step): Obj {
       return { [step.type]: { ...exprObj(step.expression), ...propsObj(step) } };
     case 'threads':
       return { threads: propsObj(step) };
+    case 'saga': {
+      const body: Obj = propsObj(step, ['compensation', 'completion']);
+      if (p.compensation) body.compensation = { uri: p.compensation };
+      if (p.completion) body.completion = { uri: p.completion };
+      body.steps = stepsArr(step.steps);
+      return { saga: body };
+    }
+    case 'onCompletion':
+      return { onCompletion: { ...propsObj(step), steps: stepsArr(step.steps) } };
     case 'circuitBreaker': {
       const body: Obj = { steps: stepsArr(step.steps) };
       const fb = (step.branches ?? []).find((b) => b.kind === 'onFallback');
@@ -127,9 +138,28 @@ export function stepToYaml(step: Step): Obj {
   }
 }
 
+/** When true, every step and branch carries its model id (used by Run & Debug to map trace events to nodes). */
+let emitIds = false;
+
+export function stepToYaml(step: Step): Obj {
+  const out = stepToYamlRaw(step);
+  if (emitIds && step.type !== 'unknown') {
+    const key = Object.keys(out)[0];
+    const body = out[key];
+    if (isObj(body)) out[key] = { id: step.id, ...body };
+    if (emitIds && isKnown(step) && step.branches && isObj(out[key])) {
+      const b = out[key] as Obj;
+      const whens = (step.branches ?? []).filter((x) => x.kind === 'when');
+      if (Array.isArray(b.when)) b.when = (b.when as Obj[]).map((w, i) => ({ id: whens[i]?.id, ...w }));
+    }
+  }
+  return out;
+}
+
 function routeToYaml(r: Route): Obj {
   const route: Obj = { id: r.routeId };
   if (r.description) route.description = r.description;
+  if (r.routeConfigurationId) route.routeConfigurationId = r.routeConfigurationId;
   route.from = { uri: r.from.uri, steps: stepsArr(r.steps) };
   return { route };
 }
@@ -166,8 +196,44 @@ function restToYaml(r: RestDef): Obj {
   return { rest: body };
 }
 
+function beansToYaml(beans: BeanDef[]): Obj {
+  return {
+    beans: beans.map((b) => {
+      const o: Obj = { name: b.name, type: b.type };
+      if (b.properties.length) o.properties = Object.fromEntries(b.properties.map(([k, v]) => [k, typedValue(v)]));
+      return o;
+    }),
+  };
+}
+
+function typedValue(v: string): unknown {
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  if (/^-?\d+(\.\d+)?$/.test(v) && !/^0\d/.test(v)) return Number(v);
+  return v;
+}
+
+function routeConfigToYaml(c: RouteConfigDef): Obj {
+  const body: Obj = { id: c.configId };
+  if (c.description) body.description = c.description;
+  body.onException = c.onExceptions.map(onExceptionToYaml);
+  return { routeConfiguration: body };
+}
+
+/** YAML with model ids on every step — the runner reports trace events by these ids. */
+export function toRunYaml(file: CamelFile): string {
+  emitIds = true;
+  try {
+    return toYaml(file);
+  } finally {
+    emitIds = false;
+  }
+}
+
 export function toYaml(file: CamelFile): string {
   const items: unknown[] = [
+    ...((file.beans ?? []).length ? [beansToYaml(file.beans!)] : []),
+    ...(file.routeConfigurations ?? []).map(routeConfigToYaml),
     ...file.onExceptions.map(onExceptionToYaml),
     ...(file.rests ?? []).map(restToYaml),
     ...file.routes.map(routeToYaml),
@@ -214,6 +280,8 @@ const KNOWN_KEYS: Record<string, string[]> = {
   routingSlip: ['uriDelimiter'],
   dynamicRouter: [],
   threads: ['poolSize', 'maxPoolSize'],
+  saga: ['propagation', 'completionMode', 'timeout'],
+  onCompletion: ['onCompleteOnly', 'onFailureOnly'],
   log: ['message', 'loggingLevel', 'logName'],
   bean: ['ref', 'method'],
   process: ['ref'],
@@ -329,11 +397,27 @@ export function parseStep(raw: unknown, path = 'step'): Step {
     case 'threads':
       step.props = pickProps(t, o);
       break;
+    case 'saga': {
+      step.props = pickProps(t, o);
+      const uri = (x: unknown) => (isObj(x) ? str(x.uri) : str(x));
+      if (o.compensation !== undefined) step.props.compensation = uri(o.compensation);
+      if (o.completion !== undefined) step.props.completion = uri(o.completion);
+      step.steps = parseSteps(o.steps, `${path}.saga`);
+      break;
+    }
+    case 'onCompletion':
+      step.props = pickProps(t, o);
+      step.steps = parseSteps(o.steps, `${path}.onCompletion`);
+      break;
     case 'circuitBreaker': {
       step.steps = parseSteps(o.steps, `${path}.circuitBreaker`);
       step.branches = isObj(o.onFallback) ? [{ id: uid('b'), kind: 'onFallback', steps: parseSteps(o.onFallback.steps, `${path}.onFallback`) }] : [];
       break;
     }
+  }
+  // An expression in a language the builder does not model (groovy, jq, …): keep the step verbatim
+  if (EIP_BY_TYPE[t]?.expression && !step.expression && isObj(v) && Object.keys(v).some((k) => !['id', 'steps', 'name', 'description'].includes(k))) {
+    return { id: uid('u'), type: 'unknown', name: type, yaml: v };
   }
   return step;
 }
@@ -346,6 +430,7 @@ function parseRoute(o: Obj, shorthand: boolean, index: number): Route {
     kind: 'route',
     routeId: str(shorthand ? fromRaw.id : o.id) || `route-${index + 1}`,
     description: str(o.description) || undefined,
+    routeConfigurationId: str(o.routeConfigurationId) || undefined,
     from: { uri: str(fromRaw.uri) },
     steps: parseSteps(fromRaw.steps, `route[${index}]`),
   };
@@ -400,7 +485,25 @@ export function fromYaml(text: string): CamelFile {
     if (key === 'route' && isObj(v)) file.routes.push(parseRoute(v, false, file.routes.length));
     else if (key === 'from' && isObj(v)) file.routes.push(parseRoute(v, true, file.routes.length));
     else if (key === 'onException' && isObj(v)) file.onExceptions.push(parseOnException(v, file.onExceptions.length));
-    else if (key === 'rest' && isObj(v) && HTTP_VERBS.some((m) => m in v) && !('verb' in v)) (file.rests ??= []).push(parseRest(v));
+    else if (key === 'beans' && Array.isArray(v) && v.every((b) => isObj(b) && typeof b.name === 'string')) {
+      for (const b of v as Obj[]) {
+        const props = isObj(b.properties) ? Object.entries(b.properties).filter(([, x]) => !isObj(x) && !Array.isArray(x)).map(([k, x]) => [k, str(x)] as [string, string]) : [];
+        if (isObj(b.properties) && props.length !== Object.keys(b.properties).length) {
+          file.extras!.push({ beans: [b] }); // nested properties: keep verbatim
+          continue;
+        }
+        (file.beans ??= []).push({ id: uid('bean'), name: str(b.name), type: str(b.type), properties: props });
+      }
+    } else if (key === 'routeConfiguration' && isObj(v) && Object.keys(v).every((k) => ['id', 'description', 'onException'].includes(k))) {
+      const list = Array.isArray(v.onException) ? v.onException : [];
+      (file.routeConfigurations ??= []).push({
+        id: uid('rc'),
+        kind: 'routeConfiguration',
+        configId: str(v.id) || 'config',
+        description: str(v.description) || undefined,
+        onExceptions: list.map((x, i) => parseOnException(isObj(x) && isObj(x.onException) ? x.onException : isObj(x) ? x : {}, i)),
+      });
+    } else if (key === 'rest' && isObj(v) && HTTP_VERBS.some((m) => m in v) && !('verb' in v)) (file.rests ??= []).push(parseRest(v));
     else file.extras!.push(item);
   });
   if (!file.extras!.length) delete file.extras;

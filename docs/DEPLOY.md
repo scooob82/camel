@@ -62,6 +62,34 @@ Skript promaže prošlé tokeny a rate-limit záznamy a uloží zálohu DB do `a
 - [ ] `/kb/` a `/sitemap.xml` existují; sitemap nahrát do Google Search Console
 - [ ] HTTPS je vynucené (session cookie má `secure`)
 
+## 6. Admin, analytika a chyby
+
+- Prvního administrátora vytvoříš po registraci: `php api/bin/make-admin.php tvuj@email.cz`. Admin je pak na `#/admin`.
+- Volitelně Sentry a Plausible: v `dist/config.js` (zdroj `public/config.js`) vyplň `sentryDsn` a `plausibleDomain`. Bez nich se chyby a návštěvnost ukládají jen do vlastní DB (bez cookies a IP).
+- Údaje provozovatele do obchodních podmínek a GDPR doplň v `src/config/brand.ts` (`operator`, `hosting`, `effectiveDate`) a nech texty zkontrolovat právníkem.
+
+## 7. Sandbox runner (Run & Debug, Transformation Lab)
+
+Runner potřebuje Javu, takže nepoběží na PHP hostingu. Stačí malý VPS (2 GB RAM) s Dockerem:
+
+```bash
+cd runner
+mvn -q test            # poprvé ověř build
+RUNNER_TOKEN=$(openssl rand -hex 32) docker compose up -d --build
+```
+
+Runner dej za HTTPS reverse proxy (Caddy/nginx) a do `cas-config.php` doplň:
+
+```php
+'runner' => [
+    'url' => 'https://runner.tvoje-domena.cz',
+    'token' => '<stejný RUNNER_TOKEN>',
+    'daily_runs' => ['free' => 20, 'pro' => null, 'team' => null],
+],
+```
+
+Bez runneru aplikace funguje dál, jen Run & Debug a Saxon v Labu ukážou hlášku, že runner není nastavený.
+
 ## Lokální vývoj s API
 
 ```bash

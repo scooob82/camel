@@ -35,6 +35,13 @@ return [
         'secure' => true,                      // cookies only over HTTPS
     ],
 
+    // Optional: sandbox runner for Run & Debug and the Saxon engine (see runner/README.md).
+    // 'runner' => [
+    //     'url' => 'http://runner.example.com:8090',
+    //     'token' => 'same value as RUNNER_TOKEN of the runner',
+    //     'daily_runs' => ['free' => 20, 'pro' => null, 'team' => null], // null = unlimited, 0 = not in plan
+    // ],
+
     // Optional: enables POST /api/v1/setup/migrate with header "X-Setup-Token: <token>"
     // for hostings without a usable shell. Leave empty to disable.
     'setup_token' => '',

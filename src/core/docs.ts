@@ -1,5 +1,5 @@
 import { EIP_BY_TYPE } from './eip';
-import { endpoints, isKnown, type CamelFile, type Expression, type Step } from './model';
+import { allOnExceptions, endpoints, isKnown, type CamelFile, type Expression, type Step } from './model';
 
 const esc = (s: string) => s.replace(/"/g, '#quot;').replace(/[<>]/g, (c) => (c === '<' ? '#lt;' : '#gt;'));
 const short = (s: string, n = 42) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -93,7 +93,7 @@ export function toMermaid(file: CamelFile): string {
     chain(r.steps, [{ id: f }]);
     lines.push('    end');
   }
-  for (const e of file.onExceptions) {
+  for (const e of allOnExceptions(file)) {
     lines.push(`    subgraph ${e.id.replace(/\W/g, '_')}["onException"]`);
     const h = node(`onException ${short(e.exceptions.map((x) => x.split('.').pop()).join(', '))}`, 'round');
     chain(e.steps, [{ id: h }]);

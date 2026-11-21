@@ -1,4 +1,5 @@
 import { api, ApiError } from './api';
+import { loadAccountSnippets, loadBrowserSnippets } from './snippets';
 import { createStore, switchToLocal, switchToRemote, toast, type Project } from './store';
 
 export interface User {
@@ -23,6 +24,7 @@ async function signedIn(user: User) {
   const r = await api<{ projects: Project[] }>('GET', '/projects');
   switchToRemote(r.projects);
   authStore.set(() => ({ status: 'authenticated', user }));
+  loadAccountSnippets().catch(() => undefined);
 }
 
 export async function initAuth() {
@@ -52,6 +54,7 @@ export async function logout() {
     await api('POST', '/auth/logout', {});
   } finally {
     switchToLocal();
+    loadBrowserSnippets();
     authStore.set(() => ({ status: 'anonymous' }));
   }
 }
@@ -68,6 +71,7 @@ export function setUser(user: User) {
 /** Account was deleted or session ended elsewhere. */
 export function signedOut() {
   switchToLocal();
+  loadBrowserSnippets();
   authStore.set(() => ({ status: 'anonymous' }));
 }
 

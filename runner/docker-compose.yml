@@ -1,0 +1,23 @@
+# Sandbox runner — run on a small VPS (1 vCPU / 1 GB is enough to start).
+#   RUNNER_TOKEN=$(openssl rand -hex 24) docker compose up -d --build
+# Put the same token into cas-config.php (runner.token) and expose the port only to the PHP server
+# (firewall) or behind HTTPS (reverse proxy with an IP allow-list).
+services:
+  runner:
+    build: .
+    restart: unless-stopped
+    environment:
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?set RUNNER_TOKEN}
+    ports:
+      - "8090:8090"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    # Routes run with external endpoints mocked; block outgoing traffic on the host firewall
+    # (e.g. DOCKER-USER iptables chain) so a route can never reach the internet.

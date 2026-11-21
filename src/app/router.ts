@@ -20,6 +20,8 @@ export type Route =
   | { name: 'verify'; token: string }
   | { name: 'account' }
   | { name: 'shared'; token: string }
+  | { name: 'admin' }
+  | { name: 'lab' }
   | { name: 'notFound'; path: string };
 
 export function parse(hash: string): Route {
@@ -40,6 +42,8 @@ export function parse(hash: string): Route {
   if (a === 'reset' && b) return { name: 'reset', token: b };
   if (a === 'verify' && b) return { name: 'verify', token: b };
   if (a === 's' && b) return { name: 'shared', token: b };
+  if (a === 'admin') return { name: 'admin' };
+  if (a === 'lab') return { name: 'lab' };
   return { name: 'notFound', path };
 }
 

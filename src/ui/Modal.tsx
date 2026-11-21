@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import { t } from '../app/i18n';
 
 interface Props {
   title: string;
@@ -58,7 +59,7 @@ export function Confirm({ title, message, confirmLabel, danger, onConfirm, onClo
       footer={
         <>
           <button className="btn ghost" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button
             className={`btn ${danger ? 'danger' : 'primary'}`}

@@ -1,6 +1,6 @@
 {
   "name": "camelapache-studio",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Integration Studio for Apache Camel \u2014 visual route builder (MVP)",
   "type": "module",
@@ -9,13 +9,14 @@
     "build": "node scripts/build.mjs",
     "serve": "php -S 127.0.0.1:8080 -t dist scripts/dev-router.php",
     "migrate": "php api/bin/migrate.php",
-    "test": "node --import tsx --test src/core/core.test.ts && node --test scripts/catalog.test.mjs",
+    "test": "node --import tsx --test src/core/core.test.ts src/core/runner.test.ts src/core/lab/lab.test.ts && node --test scripts/catalog.test.mjs",
     "test:api": "php api/tests/run.php",
     "test:e2e": "node tests/e2e/run.mjs",
     "test:all": "npm test && npm run test:api && npm run build && npm run test:e2e",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"scripts/**/*.mjs\" \"tests/**/*.mjs\"",
-    "catalog": "node scripts/generate-catalog.mjs"
+    "catalog": "node scripts/generate-catalog.mjs",
+    "lint": "eslint ."
   },
   "dependencies": {
     "jszip": "^3.10.1",
@@ -31,7 +32,12 @@
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "playwright": "^1.50.0",
-    "prettier": "^3.5.0"
+    "prettier": "^3.5.0",
+    "eslint": "^9.20.0",
+    "@eslint/js": "^9.20.0",
+    "typescript-eslint": "^8.24.0",
+    "eslint-plugin-react-hooks": "^5.1.0",
+    "globals": "^15.15.0"
   },
   "engines": {
     "node": ">=20"

@@ -1,4 +1,4 @@
-# CamelApache — Integration Studio for Apache Camel (MVP)
+# CamelApache — Integration Studio for Apache Camel
 
 Visual route builder for Apache Camel. One canonical route model, kept in sync with
 YAML DSL, XML DSL and generated Java DSL; live validation; export to a runnable
@@ -37,7 +37,7 @@ and SFTP upload + migrations (Deploy).
 | Area | Status |
 |---|---|
 | Visual builder: drag & drop, quick insert, move, multi-select, copy/paste, undo/redo, zoom, pan, collapse, keyboard navigation | ✅ |
-| 33 EIPs incl. choice, split, aggregate, circuitBreaker, throttle, enrich, recipientList, doTry… | ✅ |
+| 35 EIPs incl. saga, onCompletion, choice, split, aggregate, circuitBreaker, throttle, enrich, recipientList, doTry… | ✅ |
 | onException with redelivery + exponential back-off and a timeline preview | ✅ |
 | REST DSL (visual editor) | ✅ |
 | Contract-first: OpenAPI / AsyncAPI / WSDL → routes | ✅ |
@@ -48,7 +48,16 @@ and SFTP upload + migrations (Deploy).
 | Export: route files, Spring Boot project (YAML/XML/Java), Mermaid docs | ✅ |
 | Accounts (register, verify e-mail, reset password, GDPR export, delete), cloud sync, conflict detection, read-only share links | ✅ |
 | Knowledge Base: 20 recipes, static SEO pages + sitemap | ✅ |
-| Java DSL import, Simple evaluation, Run & Debug | ⏳ need a Java runtime (phase 2) |
+| Beans and routeConfiguration editors, canvas minimap, snippets synced to the account | ✅ |
+| Run & Debug: sandbox runs (Java `runner/`), message trace on the canvas, replay with breakpoints, mocks, chaos faults, branch coverage, JUnit generation | ✅ (runner needs a VPS with Docker) |
+| Transformation Lab (`#/lab`): XSLT 1.0/3.0 + XQuery (Saxon), debugger & profiler, mapper ⇄ XSLT ⇄ CSV, JSON ⇄ XML, XSD diff + impact, test data | ✅ |
+| Admin (`#/admin`), privacy-friendly analytics, client error reporting, optional Sentry/Plausible | ✅ |
+| Czech / English UI | ✅ |
+| Java DSL import, Simple evaluation in the inspector | ⏳ |
+
+## Sandbox runner
+
+`runner/` is a separate Spring Boot service (Camel 4.10, Saxon-HE) that executes routes and transformations. The PHP API proxies to it (`runner` section in `cas-config.php`) and enforces plan quotas. See [runner/README.md](runner/README.md).
 
 ## Roadmap
 

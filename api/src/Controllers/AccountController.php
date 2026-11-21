@@ -77,6 +77,7 @@ final class AccountController
             $this->app->db->exec('DELETE FROM versions WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?)', [$user['id']]);
             $this->app->db->exec('DELETE FROM projects WHERE user_id = ?', [$user['id']]);
             $this->app->db->exec('DELETE FROM tokens WHERE user_id = ?', [$user['id']]);
+            $this->app->db->exec('DELETE FROM user_settings WHERE user_id = ?', [$user['id']]);
             $this->app->db->exec('DELETE FROM users WHERE id = ?', [$user['id']]);
         });
         $this->app->session->logout();

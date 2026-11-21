@@ -23,6 +23,9 @@ jobs:
       - name: Type check
         run: npm run typecheck
         continue-on-error: true # not yet verified against @types/react — make blocking once green
+      - name: ESLint
+        run: npm run lint
+        continue-on-error: true # first run — make blocking once the baseline is clean
       - name: PHP lint
         run: find api scripts -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: API tests

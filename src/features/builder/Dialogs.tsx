@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { t } from '../../app/i18n';
 import { api, type ApiError } from '../../app/api';
 import { projects, toast, type Project } from '../../app/store';
 import { routeFiles, slugify, springBootProject, zip, VERSIONS, type ExportDsl } from '../../core/export';
@@ -28,13 +29,13 @@ export function ExportDialog({ project, file, onClose }: { project: Project; fil
   };
   return (
     <Modal
-      title="Export"
-      description="Download your routes or a ready-to-run project."
+      title={t('Export')}
+      description={t('Download your routes or a ready-to-run project.')}
       onClose={onClose}
       footer={
         <>
           <button className="btn ghost" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="btn primary" onClick={run} disabled={busy}>
             {busy ? 'Preparing…' : '↓ Download ZIP'}
@@ -48,7 +49,7 @@ export function ExportDialog({ project, file, onClose }: { project: Project; fil
             ⇧
           </div>
           <div>
-            <b>Spring Boot project</b>
+            <b>{t('Spring Boot project')}</b>
             <span>
               Maven project with the right Camel starters, application.properties, Dockerfile and docs. Camel {VERSIONS.camel} · Spring Boot {VERSIONS.springBoot} · Java {VERSIONS.java}.
             </span>
@@ -59,7 +60,7 @@ export function ExportDialog({ project, file, onClose }: { project: Project; fil
             ▤
           </div>
           <div>
-            <b>Route files only</b>
+            <b>{t('Route files only')}</b>
             <span>YAML, XML and Java DSL versions of the routes plus ROUTES.md documentation.</span>
           </div>
         </button>
@@ -67,7 +68,7 @@ export function ExportDialog({ project, file, onClose }: { project: Project; fil
       {kind === 'spring' && (
         <div className="field" style={{ marginTop: 16 }}>
           <label>
-            <span>Route DSL in the project</span>
+            <span>{t('Route DSL in the project')}</span>
           </label>
           <div className="chips" role="radiogroup">
             {(['yaml', 'xml', 'java'] as ExportDsl[]).map((d) => (
@@ -91,16 +92,16 @@ function VersionDiff({ from, to, label, onBack }: { from: CamelFile; to: CamelFi
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <button className="tinybtn" onClick={onBack}>
-          ← Versions
+          {t('← Versions')}
         </button>
         <span className="muted" style={{ fontSize: 12 }}>
           “{label}” → current · <span className="c-ok">+{st.added}</span> <span className="c-err">−{st.removed}</span>
         </span>
       </div>
       {st.added + st.removed === 0 ? (
-        <p className="muted">No differences — the current project matches this version.</p>
+        <p className="muted">{t('No differences — the current project matches this version.')}</p>
       ) : (
-        <div className="diff" role="table" aria-label="YAML differences">
+        <div className="diff" role="table" aria-label={t('YAML differences')}>
           {lines.map((l, i) =>
             l.op === 'gap' ? (
               <div key={i} className="gap">
@@ -125,13 +126,13 @@ export function VersionsDialog({ project, current, onRestore, onClose }: { proje
   const cmp = project.versions.find((v) => v.id === comparing);
   if (cmp) {
     return (
-      <Modal title="Compare versions" description="YAML of the saved version compared with the current canvas." onClose={onClose} className="wide">
+      <Modal title={t('Compare versions')} description={t('YAML of the saved version compared with the current canvas.')} onClose={onClose} className="wide">
         <VersionDiff from={cmp.file} to={current} label={cmp.label} onBack={() => setComparing(undefined)} />
       </Modal>
     );
   }
   return (
-    <Modal title="Version history" description="Snapshots are stored with the project. Restoring replaces the canvas (you can undo)." onClose={onClose}>
+    <Modal title={t('Version history')} description={t('Snapshots are stored with the project. Restoring replaces the canvas (you can undo).')} onClose={onClose}>
       <form
         style={{ display: 'flex', gap: 8, marginBottom: 16 }}
         onSubmit={(e) => {
@@ -141,14 +142,14 @@ export function VersionsDialog({ project, current, onRestore, onClose }: { proje
           toast('Version saved', 'success');
         }}
       >
-        <input className="input" placeholder="Label, e.g. “before error handling”" value={label} onChange={(e) => setLabel(e.target.value)} aria-label="Version label" maxLength={80} />
+        <input className="input" placeholder={t('Label, e.g. “before error handling”')} value={label} onChange={(e) => setLabel(e.target.value)} aria-label={t('Version label')} maxLength={80} />
         <button className="btn primary sm" type="submit">
-          Save version
+          {t('Save version')}
         </button>
       </form>
       {!project.versions.length ? (
         <p className="muted" style={{ fontSize: 12.5 }}>
-          No versions yet. Save one before a bigger change — <span className="kbd">Ctrl S</span> works too.
+          No versions yet. Save one before a bigger change — <span className="kbd">{t('Ctrl S')}</span> {t('works too.')}
         </p>
       ) : (
         <table className="tbl">
@@ -163,7 +164,7 @@ export function VersionsDialog({ project, current, onRestore, onClose }: { proje
                 </td>
                 <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                   <button className="tinybtn" onClick={() => setComparing(v.id)}>
-                    Compare
+                    {t('Compare')}
                   </button>{' '}
                   <button
                     className="tinybtn"
@@ -173,7 +174,7 @@ export function VersionsDialog({ project, current, onRestore, onClose }: { proje
                       onClose();
                     }}
                   >
-                    Restore
+                    {t('Restore')}
                   </button>{' '}
                   <button className="tinybtn" onClick={() => projects.deleteVersion(project.id, v.id)} aria-label={`Delete version ${v.label}`}>
                     ✕
@@ -202,12 +203,12 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose():
     }
   };
   return (
-    <Modal title="Share" description="Anyone with the link can view this project (read-only) and copy it into their own projects." onClose={onClose}>
+    <Modal title={t('Share')} description={t('Anyone with the link can view this project (read-only) and copy it into their own projects.')} onClose={onClose}>
       {url ? (
         <>
           <div className="field">
             <label htmlFor="share-url">
-              <span>Read-only link</span>
+              <span>{t('Read-only link')}</span>
             </label>
             <div style={{ display: 'flex', gap: 6 }}>
               <input id="share-url" className="input mono" readOnly value={url} onFocus={(e) => e.target.select()} />
@@ -220,10 +221,10 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose():
                   )
                 }
               >
-                Copy
+                {t('Copy')}
               </button>
             </div>
-            <span className="hint">The link always shows the latest saved state of the project.</span>
+            <span className="hint">{t('The link always shows the latest saved state of the project.')}</span>
           </div>
           <button
             className="btn sm danger"
@@ -236,7 +237,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose():
               })
             }
           >
-            Stop sharing
+            {t('Stop sharing')}
           </button>
         </>
       ) : (

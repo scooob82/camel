@@ -1,6 +1,6 @@
 import { COMPONENT_BY_SCHEME, parseUri } from './catalog';
 import { EIP_BY_TYPE } from './eip';
-import { isKnown, type CamelFile, type Step } from './model';
+import { allOnExceptions, isKnown, walkSteps, type CamelFile, type Step } from './model';
 
 export type Severity = 'error' | 'warning' | 'info';
 
@@ -100,7 +100,28 @@ export function validate(file: CamelFile): Issue[] {
     checkSteps(r.steps, issues);
   }
   for (const [id, n] of ids) if (n > 1 && id) issues.push({ severity: 'error', message: `Duplicate route id "${id}"`, rule: 'route-id-unique', target: file.routes.find((r) => r.routeId === id)?.id });
-  for (const ex of file.onExceptions) {
+  const configIds = new Set((file.routeConfigurations ?? []).map((c) => c.configId));
+  for (const c of file.routeConfigurations ?? []) {
+    if (!c.configId.trim()) issues.push({ severity: 'error', message: 'routeConfiguration needs an id', target: c.id, rule: 'route-config-id' });
+    if (!c.onExceptions.length) issues.push({ severity: 'warning', message: `routeConfiguration "${c.configId}" has no error handlers`, target: c.id, rule: 'route-config-empty' });
+  }
+  for (const r of file.routes) {
+    if (r.routeConfigurationId && !configIds.has(r.routeConfigurationId)) {
+      issues.push({ severity: 'warning', message: `Route "${r.routeId}" uses routeConfiguration "${r.routeConfigurationId}" which is not in this file`, target: r.id, rule: 'route-config-ref' });
+    }
+  }
+  const beanNames = new Set<string>();
+  for (const b of file.beans ?? []) {
+    if (!b.name.trim() || !b.type.trim()) issues.push({ severity: 'error', message: 'Every bean needs a name and a type', target: '__beans__', rule: 'bean-required' });
+    if (beanNames.has(b.name)) issues.push({ severity: 'error', message: `Duplicate bean name "${b.name}"`, target: '__beans__', rule: 'bean-duplicate' });
+    beanNames.add(b.name);
+  }
+  let usesSaga = false;
+  walkSteps(file, (s) => {
+    if (isKnown(s) && s.type === 'saga') usesSaga = true;
+  });
+  if (usesSaga) issues.push({ severity: 'info', message: 'The saga EIP needs a saga service (e.g. InMemorySagaService bean or LRA) registered in Camel', rule: 'saga-service' });
+  for (const ex of allOnExceptions(file)) {
     if (!ex.exceptions.length) issues.push({ severity: 'error', message: 'onException: at least one exception class is required', target: ex.id, rule: 'onexception-class' });
     checkSteps(ex.steps, issues);
   }
@@ -119,7 +140,8 @@ export function validate(file: CamelFile): Issue[] {
     }
   }
   if ((file.rests ?? []).length) issues.push({ severity: 'info', message: 'REST DSL needs a restConfiguration (e.g. component: platform-http) in application.properties — the Spring Boot export adds it', rule: 'rest-configuration' });
-  if (file.routes.length && !file.onExceptions.length && !file.routes.every((r) => hasDoTry(r.steps))) {
+  const handled = (r: (typeof file.routes)[number]) => hasDoTry(r.steps) || (!!r.routeConfigurationId && configIds.has(r.routeConfigurationId));
+  if (file.routes.length && !file.onExceptions.length && !file.routes.every(handled)) {
     issues.push({ severity: 'warning', message: 'No error handling — consider adding an onException block or doTry', rule: 'error-handler' });
   }
   return issues;

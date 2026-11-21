@@ -29,6 +29,9 @@ final class Config
             'team' => ['projects' => 2000, 'versions' => 200, 'project_bytes' => 5000000],
         ],
         'require_verified_email' => false,
+        // Java sandbox runner (Run & Debug, Saxon). Empty url = feature shows as unavailable.
+        // daily_runs per plan: null = unlimited, 0 = not included in the plan.
+        'runner' => ['url' => '', 'token' => '', 'daily_runs' => ['free' => 20, 'pro' => null, 'team' => null]],
         'setup_token' => '',
         'storage' => __DIR__ . '/../storage',
     ];

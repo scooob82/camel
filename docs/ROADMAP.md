@@ -15,14 +15,14 @@ Odhady pracnosti jsou hrubé a orientační (S = do 1 dne, M = 2–4 dny, L = 1�
 | 1 – MVP: frontend | ✅ hotovo | – |
 | 1 – MVP: backend, účty, nasazení | ✅ hotovo, čeká na nasazení | S (nasazení, rozhodnutí) |
 | 1.5 – Dotažení builderu | ✅ hotovo kromě částí, které potřebují Java runtime | – (zbytek ve fázi 2) |
-| 2 – Pro: Run & Debug | ⬜ | XL |
-| 3 – Transformation Lab | ⬜ | L–XL |
+| 2 – Pro: Run & Debug | 🟡 hotovo, Java runner čeká na první build a nasazení | S–M (ověření na VPS, platby) |
+| 3 – Transformation Lab | ✅ hotovo (Saxon přes runner) | – |
 | 4 – Migration Center | ⬜ | XL |
 | 5 – AI, Team, Enterprise | ⬜ | XL |
 
-**MVP je hotové a připravené k nasazení, celkově asi 35 % vize.** Chybí rozhodnutí o názvu a doméně, první nasazení na hosting a ověření v CI. Placené moduly (fáze 2–5) jsou zatím jen v plánu.
+**MVP, fáze 1.5, Run & Debug i Transformation Lab jsou hotové, celkově asi 55 % vize.** Chybí rozhodnutí o názvu a doméně, první nasazení (PHP hosting + VPS s runnerem), první build Java runneru a platby. Fáze 4–5 jsou v plánu.
 
-Testy: 77 unit testů jádra, 2 testy generátoru katalogu, 53 end-to-end testů API, 3 browserové scénáře (Playwright) přes aplikaci + API.
+Testy: 90 unit testů (jádro, příprava běhu, Lab), 2 testy katalogu, 72 testů API (včetně proxy na runner proti testovací náhradě), 4 browserové scénáře (Playwright). Java runner má vlastní JUnit test, tady se ale nedal spustit (bez Maven Central).
 
 ---
 
@@ -59,12 +59,11 @@ Testy: 77 unit testů jádra, 2 testy generátoru katalogu, 53 end-to-end testů
 - 🔶 **Název a doména:** „camelapache“ je kvůli ochranné známce ASF riskantní. Změna = `src/config/brand.ts` + `index.html`.
 - 🔶 Ověřit verze v generovaném projektu (Camel 4.10.0, Spring Boot 3.4.4).
 - ⬜ První nasazení na VMS Smart (S), nastavit SMTP a cron
-- ⬜ `npm run typecheck` s typy Reactu: tady se nedalo spustit, v CI zatím nepovinné (S)
-- ⬜ ESLint (S). Teď je jen Prettier.
-- ⬜ Lokalizace CZ/EN, rozhraní je zatím anglicky (M)
-- ⬜ Monitoring chyb (Sentry) a analytika šetrná k soukromí (S)
-- ⬜ Finální znění obchodních podmínek a GDPR; cookie lišta, až přibude analytika
-- ⬜ Admin rozhraní (uživatelé, tarify), zatím jen přímo v DB (M)
+- 🟡 `npm run typecheck` a ESLint (`npm run lint`, flat config): nastavené, ale tady se nedaly spustit, v CI zatím nepovinné
+- ✅ Čeština v rozhraní (přepínač EN/CS, výchozí podle prohlížeče). Validační hlášky, recepty a dokumentace EIP zůstávají anglicky.
+- ✅ Hlášení chyb z prohlížeče do vlastní DB + volitelně Sentry; vlastní analytika bez cookies a IP (zobrazení stránek), volitelně Plausible — obojí přes `public/config.js`. Cookie lišta není potřeba.
+- 🟡 Obchodní podmínky a zásady ochrany osobních údajů (CZ + EN) jsou napsané; doplň údaje provozovatele v `src/config/brand.ts` a nech je zkontrolovat právníkem
+- ✅ Admin `#/admin`: přehled, návštěvnost, uživatelé (tarif, role, smazání), chyby. Prvního admina vytvoříš `php api/bin/make-admin.php email`.
 
 ---
 
@@ -85,37 +84,39 @@ Testy: 77 unit testů jádra, 2 testy generátoru katalogu, 53 end-to-end testů
 - ⬜ Vyhodnocení Simple jazyka
 
 ### Zbývá (menší)
-- ⬜ Vizuální editor pro beans a routeConfiguration (dnes se v YAML jen zachovají)
-- ⬜ EIP saga a onCompletion
-- ⬜ Minimapa plátna
-- ⬜ Snippety synchronizované s účtem (dnes jen v prohlížeči)
+- ✅ Vizuální editor pro beans a routeConfiguration (YAML, XML i Java)
+- ✅ EIP saga a onCompletion
+- ✅ Minimapa plátna
+- ✅ Snippety synchronizované s účtem
 - ⬜ Plný audit přístupnosti (základ je: klávesnice, ARIA, kontrasty)
 
 ---
 
-## ⬜ Fáze 2 – Pro: Run & Debug (XL)
+## 🟡 Fáze 2 – Pro: Run & Debug (XL)
 
 Vyžaduje samostatný VPS s Dockerem a Java/Camel runtime. Na VMS Smart to nepoběží.
 
-- ⬜ Java služba (Spring Boot + Camel 4) s API pro spuštění routy
+- ✅ Java služba `runner/` (Spring Boot 3.4 + Camel 4.10 + Saxon-HE), Docker; 🔶 první `mvn test` a nasazení na VPS
 - ⬜ Import Java DSL a živé vyhodnocení Simple výrazů (používají stejnou Java službu)
-- ⬜ Izolovaný sandbox: kontejner na běh, limity CPU/RAM/času/sítě/FS, zakázané nebezpečné komponenty (exec, file mimo sandbox…)
-- ⬜ Mock endpointy a vstupní zprávy
-- ⬜ Trasování zprávy krok po kroku přímo v diagramu (body, headers, properties)
-- ⬜ Breakpointy a historie běhů
-- ⬜ Generování unit testů z trace
-- ⬜ Chaos testy (timeout, HTTP 500, nevalidní data) a pokrytí větví
+- ✅ Izolovaný sandbox: kontejner na běh, limity CPU/RAM/času/sítě/FS, zakázané nebezpečné komponenty (exec, file mimo sandbox…)
+- ✅ Mock endpointy a vstupní zprávy
+- ✅ Trasování zprávy krok po kroku přímo v diagramu (body, headers, properties)
+- ✅ Breakpointy (přehrávání trace) a historie běhů
+- ✅ Generování unit testů (JUnit 5 + AdviceWith) z trace
+- ✅ Chaos testy (timeout, HTTP 500, nevalidní data) a pokrytí větví
 - ⬜ Platby a tarify: merchant of record (Paddle / Lemon Squeezy), webhooky, kredity
 
-## ⬜ Fáze 3 – Transformation Lab (L–XL)
+## ✅ Fáze 3 – Transformation Lab (L–XL)
 
-- ⬜ XSLT 3.0 playground (zvážit SaxonJS v prohlížeči pro rychlý start, ověřit licenci)
-- ⬜ XQuery playground (Saxon na Javě)
-- ⬜ Debugger s breakpointy a profiler transformací
-- ⬜ Vizuální mapper JSON ↔ XML
-- ⬜ Excel mapping → XSLT a zpět
-- ⬜ Diff XSD verzí a dopad změn na transformace
-- ⬜ Generování testovacích dat ze schémat
+Stránka `#/lab`. XSLT 1.0 běží i v prohlížeči (Chrome ho ale odstraňuje, proto je výchozí Saxon), XSLT 3.0 a XQuery přes runner.
+
+- ✅ XSLT 3.0 playground (Saxon-HE v runneru)
+- ✅ XQuery playground (Saxon na Javě)
+- ✅ Debugger s breakpointy a profiler transformací
+- ✅ Vizuální mapper JSON ↔ XML
+- ✅ Excel mapping (CSV se středníky) → XSLT a zpět
+- ✅ Diff XSD verzí a dopad změn na transformace
+- ✅ Generování testovacích dat ze schémat
 
 ## ⬜ Fáze 4 – Migration Center (XL)
 

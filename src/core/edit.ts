@@ -1,10 +1,12 @@
 /** Immutable editing operations on the canonical model. */
-import { isKnown, type Branch, type CamelFile, type Container, type KnownStep, type OnException, type RestDef, type Route, type Step } from './model';
+import { allOnExceptions, isKnown, type Branch, type CamelFile, type Container, type KnownStep, type OnException, type RestDef, type Route, type RouteConfigDef, type Step } from './model';
 
 export type NodeRef =
   | { kind: 'route'; node: Route }
   | { kind: 'onException'; node: OnException }
   | { kind: 'rest'; node: RestDef }
+  | { kind: 'routeConfiguration'; node: RouteConfigDef }
+  | { kind: 'beans'; node: { id: string } }
   | { kind: 'step'; node: Step; parent: Container }
   | { kind: 'branch'; node: Branch; parent: KnownStep };
 
@@ -12,6 +14,11 @@ export function findNode(file: CamelFile, id: string): NodeRef | undefined {
   for (const r of file.routes) if (r.id === id) return { kind: 'route', node: r };
   for (const e of file.onExceptions) if (e.id === id) return { kind: 'onException', node: e };
   for (const r of file.rests ?? []) if (r.id === id) return { kind: 'rest', node: r };
+  if (id === BEANS_ID) return { kind: 'beans', node: { id } };
+  for (const c of file.routeConfigurations ?? []) {
+    if (c.id === id) return { kind: 'routeConfiguration', node: c };
+    for (const e of c.onExceptions) if (e.id === id) return { kind: 'onException', node: e };
+  }
   let found: NodeRef | undefined;
   const visit = (owner: Container): boolean => {
     for (const s of owner.steps) {
@@ -33,7 +40,7 @@ export function findNode(file: CamelFile, id: string): NodeRef | undefined {
     return false;
   };
   for (const r of file.routes) if (visit(r)) return found;
-  for (const e of file.onExceptions) if (visit(e)) return found;
+  for (const e of allOnExceptions(file)) if (visit(e)) return found;
   return undefined;
 }
 
@@ -41,7 +48,7 @@ export function findNode(file: CamelFile, id: string): NodeRef | undefined {
 function container(file: CamelFile, id: string): Container | undefined {
   const ref = findNode(file, id);
   if (!ref) return undefined;
-  if (ref.kind === 'rest') return undefined;
+  if (ref.kind === 'rest' || ref.kind === 'routeConfiguration' || ref.kind === 'beans') return undefined;
   if (ref.kind === 'route' || ref.kind === 'onException' || ref.kind === 'branch') return ref.node;
   if (isKnown(ref.node) && ref.node.steps) return ref.node as Container;
   return undefined;
@@ -62,7 +69,11 @@ export function removeNode(file: CamelFile, id: string): CamelFile {
   const ref = findNode(next, id);
   if (!ref) return file;
   if (ref.kind === 'route') next.routes = next.routes.filter((r) => r.id !== id);
-  else if (ref.kind === 'onException') next.onExceptions = next.onExceptions.filter((e) => e.id !== id);
+  else if (ref.kind === 'onException') {
+    next.onExceptions = next.onExceptions.filter((e) => e.id !== id);
+    for (const c of next.routeConfigurations ?? []) c.onExceptions = c.onExceptions.filter((e) => e.id !== id);
+  } else if (ref.kind === 'routeConfiguration') next.routeConfigurations = (next.routeConfigurations ?? []).filter((c) => c.id !== id);
+  else if (ref.kind === 'beans') delete next.beans;
   else if (ref.kind === 'rest') next.rests = (next.rests ?? []).filter((r) => r.id !== id);
   else if (ref.kind === 'step') ref.parent.steps = ref.parent.steps.filter((s) => s.id !== id);
   else ref.parent.branches = (ref.parent.branches ?? []).filter((b) => b.id !== id);
@@ -94,11 +105,14 @@ export function duplicateStep(file: CamelFile, stepId: string, reid: (s: Step) =
 }
 
 /** Apply a mutation to a node (route, onException, step or branch) by id. */
-export function updateNode(file: CamelFile, id: string, mutate: (node: Route | OnException | RestDef | Step | Branch) => void): CamelFile {
+/** Pseudo-id used to select the beans lane. */
+export const BEANS_ID = '__beans__';
+
+export function updateNode(file: CamelFile, id: string, mutate: (node: Route | OnException | RestDef | RouteConfigDef | Step | Branch) => void): CamelFile {
   const next = clone(file);
   const ref = findNode(next, id);
   if (!ref) return file;
-  mutate(ref.node);
+  mutate(ref.node as Route);
   return next;
 }
 

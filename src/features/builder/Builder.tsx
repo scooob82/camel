@@ -1,23 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { plural, t } from '../../app/i18n';
 import { useContextCommands, openPalette } from '../../app/commands';
 import { href, navigate } from '../../app/router';
 import { authStore } from '../../app/session';
 import { appStore, projects, storage, toast, useStore, type Project } from '../../app/store';
-import { addBranch, duplicateStep, findNode, insertStep, moveStep, removeNode, updateNode } from '../../core/edit';
+import { addBranch, BEANS_ID, duplicateStep, findNode, insertStep, moveStep, removeNode, updateNode } from '../../core/edit';
 import { newBranch, newStep } from '../../core/eip';
 import { baseName, CONTRACT_LABEL, IMPORT_ACCEPT, importAny } from '../../core/importer';
-import { isKnown, newOnException, newRest, newRoute, uid, type Branch, type CamelFile, type Container, type Step, type StepType } from '../../core/model';
+import { isKnown, newBean, newOnException, newRest, newRoute, newRouteConfiguration, allOnExceptions, uid, type Branch, type CamelFile, type Container, type Step, type StepType } from '../../core/model';
 import { parseStep, stepToYaml } from '../../core/yaml';
 import { snippets } from '../../app/snippets';
 import YAML from 'yaml';
 import { validate, type Issue, type Severity } from '../../core/validate';
-import { ThemeButton } from '../../ui/Chrome';
+import { LangButton, ThemeButton } from '../../ui/Chrome';
 import { EmptyState } from '../../ui/Modal';
 import { FlowCanvas, type CanvasHandlers, type DropPayload } from './Canvas';
 import { CodePanel, type CodeTab } from './CodePanel';
 import { ExportDialog, ShareDialog, VersionsDialog } from './Dialogs';
 import { Inspector } from './Inspector';
 import { Palette, QuickAdd } from './Palette';
+import { Minimap } from './Minimap';
+import { RunPanel, type TraceView } from './RunPanel';
 import { pickTextFile } from './download';
 
 // ---------------------------------------------------------------- history
@@ -103,27 +106,27 @@ function ValidationBar({ issues, onPick }: { issues: Issue[]; onPick(id?: string
   const errors = n('error');
   const warnings = n('warning');
   return (
-    <div className="validation" aria-label="Validation">
+    <div className="validation" aria-label={t('Validation')}>
       <button className="validation-summary" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <strong>Route validation</strong>
+        <strong>{t('Route validation')}</strong>
         {errors === 0 ? (
-          <span className="count c-ok">✓ No errors</span>
+          <span className="count c-ok">{t('✓ No errors')}</span>
         ) : (
           <span className="count c-err">
-            ✕ <b>{errors}</b> error{errors > 1 ? 's' : ''}
+            ✕ {plural(errors, '{n} error', '{n} errors')}
           </span>
         )}
         <span className={`count ${warnings ? 'c-warn' : 'muted'}`}>
-          ! <b>{warnings}</b> warning{warnings === 1 ? '' : 's'}
+          ! {plural(warnings, '{n} warning', '{n} warnings')}
         </span>
         <span className="count c-info">
           i <b>{n('info')}</b>
         </span>
-        <span className="chev">{open ? 'Hide ▾' : 'Details ▸'}</span>
+        <span className="chev">{open ? t('Hide ▾') : t('Details ▸')}</span>
       </button>
       {open && (
         <div className="issues">
-          {!issues.length && <div className="issue c-ok">✓ Everything looks good.</div>}
+          {!issues.length && <div className="issue c-ok">{t('✓ Everything looks good.')}</div>}
           {[...issues]
             .sort((a, b) => rank[b.severity] - rank[a.severity])
             .map((i, k) => (
@@ -151,7 +154,7 @@ export function Builder({ id }: { id: string }) {
   if (!project && authStatus === 'loading') {
     return (
       <div className="wrap page">
-        <p className="muted">Loading project…</p>
+        <p className="muted">{t('Loading project…')}</p>
       </div>
     );
   }
@@ -160,11 +163,11 @@ export function Builder({ id }: { id: string }) {
       <div className="wrap page">
         <EmptyState
           icon="?"
-          title="Project not found"
-          text="It may have been deleted, belong to another account, or live in another browser. Sign in to see projects synced to your account."
+          title={t('Project not found')}
+          text={t('It may have been deleted, belong to another account, or live in another browser. Sign in to see projects synced to your account.')}
           action={
             <a className="btn primary" href={href('/dashboard')}>
-              Back to projects
+              {t('Back to projects')}
             </a>
           }
         />
@@ -183,7 +186,9 @@ function Studio({ project }: { project: Project }) {
   const [multi, setMulti] = useState<Set<string>>(() => new Set());
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
   const canvasRef = useRef<HTMLElement>(null);
-  const [tab, setTab] = useState<'props' | CodeTab>('props');
+  const [tab, setTab] = useState<'props' | 'run' | CodeTab>('props');
+  const [traceView, setTraceView] = useState<TraceView>();
+  const [breakpoints, setBreakpoints] = useState<Set<string>>(() => new Set());
   const [quick, setQuick] = useState<{ containerId: string; index: number; anchor: DOMRect }>();
   const [dialog, setDialog] = useState<'export' | 'versions' | 'share'>();
   const [zoom, setZoom] = useState(1);
@@ -214,6 +219,11 @@ function Studio({ project }: { project: Project }) {
 
   const select = useCallback(
     (id?: string, additive = false) => {
+      if (tab === 'run' && !additive) {
+        setMulti(new Set());
+        setSelected(id);
+        return;
+      }
       if (additive && id && selected && findNode(file, id)?.kind === 'step' && findNode(file, selected)?.kind === 'step') {
         setMulti((m) => {
           const next = new Set(m.size ? m : [selected]);
@@ -229,7 +239,7 @@ function Studio({ project }: { project: Project }) {
       setSelected(id);
       if (id) setTab('props');
     },
-    [file, selected],
+    [file, selected, tab],
   );
 
   const create = (p: DropPayload): Step | undefined => {
@@ -276,7 +286,7 @@ function Studio({ project }: { project: Project }) {
         }
       }
     };
-    [...file.routes, ...file.onExceptions].forEach((c: Container) => visit(c.steps));
+    [...file.routes, ...allOnExceptions(file)].forEach((c: Container) => visit(c.steps));
     return out;
   };
 
@@ -292,6 +302,7 @@ function Studio({ project }: { project: Project }) {
         return n;
       }),
     status,
+    trace: traceView || breakpoints.size ? { visited: traceView?.visited ?? new Set(), current: traceView?.current, uncovered: traceView?.uncovered, breakpoints } : undefined,
     onSelect: select,
     onDrop(containerId, index, payload) {
       if (payload.kind === 'move') {
@@ -344,6 +355,24 @@ function Studio({ project }: { project: Project }) {
     stepsToPaste.forEach((st, i) => (f = insertStep(f, t.id, t.index + i, reid(st))));
     commit(f);
     toast(`Pasted ${stepsToPaste.length} step${stepsToPaste.length > 1 ? 's' : ''}`, 'success');
+  };
+
+  const addBeans = () => {
+    commit({ ...file, beans: [...(file.beans ?? []), newBean()] });
+    select(BEANS_ID);
+  };
+  const addRouteConfig = () => {
+    const n = (file.routeConfigurations ?? []).length;
+    const c = newRouteConfiguration(n ? `errorHandling${n + 1}` : 'errorHandling');
+    const ex = newOnException();
+    c.onExceptions.push(ex);
+    commit({ ...file, routeConfigurations: [...(file.routeConfigurations ?? []), c] });
+    select(c.id);
+  };
+  const addConfigHandler = (configId: string) => {
+    const ex = newOnException();
+    commit(updateNode(file, configId, (n) => (n as { onExceptions: typeof ex[] }).onExceptions.push(ex)));
+    select(ex.id);
   };
 
   const addRest = () => {
@@ -544,6 +573,7 @@ function Studio({ project }: { project: Project }) {
       { id: 'b-xml', title: 'Show XML', group: 'Builder', run: () => setTab('xml') },
       { id: 'b-java', title: 'Show Java DSL', group: 'Builder', run: () => setTab('java') },
       { id: 'b-docs', title: 'Show documentation', group: 'Builder', run: () => setTab('docs') },
+      { id: 'b-run', title: 'Run & Debug', group: 'Builder', run: () => setTab('run') },
       { id: 'b-left', title: 'Toggle components panel', group: 'Builder', run: () => setLayout((l) => ({ ...l, showLeft: !l.showLeft })) },
       { id: 'b-right', title: 'Toggle editor panel', group: 'Builder', run: () => setLayout((l) => ({ ...l, showRight: !l.showRight })) },
     ],
@@ -551,22 +581,22 @@ function Studio({ project }: { project: Project }) {
   );
 
   const cols = [layout.showLeft ? `${layout.left}px 5px` : '', 'minmax(320px, 1fr)', layout.showRight ? `5px ${layout.right}px` : ''].filter(Boolean).join(' ');
-  const empty = !file.routes.length && !file.onExceptions.length && !(file.rests ?? []).length;
+  const empty = !file.routes.length && !file.onExceptions.length && !(file.rests ?? []).length && !(file.beans ?? []).length && !(file.routeConfigurations ?? []).length;
 
   return (
     <div className="studio">
       <header className="studio-bar">
-        <a className="brandmark" href={href('/')} aria-label="Home">
+        <a className="brandmark" href={href('/')} aria-label={t('Home')}>
           🐪
         </a>
-        <nav className="crumb" aria-label="Breadcrumb">
-          <a href={href('/dashboard')}>Projects</a>
+        <nav className="crumb" aria-label={t('Breadcrumb')}>
+          <a href={href('/dashboard')}>{t('Projects')}</a>
           <span>/</span>
           <input
             value={project.name}
             onChange={(e) => projects.update(project.id, { name: e.target.value })}
             onBlur={(e) => !e.target.value.trim() && projects.update(project.id, { name: 'Untitled project' })}
-            aria-label="Project name"
+            aria-label={t('Project name')}
             maxLength={80}
           />
         </nav>
@@ -575,73 +605,75 @@ function Studio({ project }: { project: Project }) {
           title={mode === 'remote' ? 'Synced to your account' : saveFailed ? 'Browser storage is full or blocked' : 'Saved in this browser'}
           role="status"
         >
-          <i /> {saveFailed ? 'Not saved' : pending ? 'Saving…' : mode === 'remote' ? 'Saved to cloud' : 'Saved in browser'}
+          <i /> {t(saveFailed ? 'Not saved' : pending ? 'Saving…' : mode === 'remote' ? 'Saved to cloud' : 'Saved in browser')}
         </span>
         <div className="bar-actions">
-          <button className="tinybtn" onClick={undo} disabled={!canUndo} title="Undo (Ctrl Z)" aria-label="Undo">
+          <button className="tinybtn" onClick={undo} disabled={!canUndo} title={t('Undo (Ctrl Z)')} aria-label={t('Undo')}>
             ↶
           </button>
-          <button className="tinybtn" onClick={redo} disabled={!canRedo} title="Redo (Ctrl Shift Z)" aria-label="Redo">
+          <button className="tinybtn" onClick={redo} disabled={!canRedo} title={t('Redo (Ctrl Shift Z)')} aria-label={t('Redo')}>
             ↷
           </button>
           <span className="sep" />
           <button className="tinybtn hide-sm" onClick={importFile}>
-            ↑ Import
+            {t('↑ Import')}
           </button>
           <button className="tinybtn hide-sm" onClick={() => setDialog('versions')}>
-            ⟲ Versions {project.versions.length ? `(${project.versions.length})` : ''}
+            ⟲ {t('Versions')} {project.versions.length ? `(${project.versions.length})` : ''}
           </button>
           {mode === 'remote' && (
             <button className="tinybtn hide-sm" onClick={() => setDialog('share')}>
-              ⌁ Share{project.shareToken ? ' · on' : ''}
+              ⌁ {t('Share')}{project.shareToken ? ' · ✓' : ''}
             </button>
           )}
           <button className="tinybtn accent" onClick={() => setDialog('export')}>
-            ↓ Export
+            {t('↓ Export')}
           </button>
           <span className="sep" />
-          <button className="tinybtn hide-sm" onClick={openPalette} title="Command palette">
+          <button className="tinybtn hide-sm" onClick={openPalette} title={t('Command palette')}>
             ⌘K
           </button>
+          <LangButton />
           <ThemeButton />
         </div>
       </header>
 
       <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div className="mobile-note">The builder is designed for desktop screens. On mobile you can review routes and code.</div>
+        <div className="mobile-note">{t('The builder is designed for desktop screens. On mobile you can review routes and code.')}</div>
         <div className="studio-main" style={{ gridTemplateColumns: cols, flex: 1 }}>
           {layout.showLeft && (
             <>
-              <Palette onAdd={addFromPalette} onAddErrorHandler={addErrorHandler} onAddRoute={addRoute} onAddRest={addRest} />
+              <Palette onAdd={addFromPalette} onAddErrorHandler={addErrorHandler} onAddRoute={addRoute} onAddRest={addRest} onAddBeans={addBeans} onAddRouteConfig={addRouteConfig} />
               <Resizer onDrag={(dx) => setLayout((l) => ({ ...l, left: Math.min(420, Math.max(180, l.left + dx)) }))} />
             </>
           )}
-          <main className="canvas" aria-label="Route canvas" ref={canvasRef}>
+          <div className="canvas-wrap">
+          <main className="canvas" aria-label={t('Route canvas')} ref={canvasRef}>
             <div className="canvas-head">
-              <span>CANVAS · {file.routes.length} route{file.routes.length === 1 ? '' : 's'}</span>
+              <span>{t('CANVAS')} · {plural(file.routes.length, '{n} route', '{n} routes')}</span>
               <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
                 {!layout.showLeft && (
                   <button className="tinybtn" onClick={() => setLayout((l) => ({ ...l, showLeft: true }))}>
-                    ☰ Components
+                    {t('☰ Components')}
                   </button>
                 )}
-                <span className="canvas-zoom" role="group" aria-label="Zoom">
-                  <button className="tinybtn" onClick={() => setZoom((z) => Math.max(0.4, +(z - 0.1).toFixed(2)))} aria-label="Zoom out">
+                <span className="canvas-zoom" role="group" aria-label={t('Zoom')}>
+                  <button className="tinybtn" onClick={() => setZoom((z) => Math.max(0.4, +(z - 0.1).toFixed(2)))} aria-label={t('Zoom out')}>
                     −
                   </button>
-                  <button className="tinybtn" onClick={() => setZoom(1)} aria-label="Reset zoom" title="Reset zoom">
+                  <button className="tinybtn" onClick={() => setZoom(1)} aria-label={t('Reset zoom')} title={t('Reset zoom')}>
                     {Math.round(zoom * 100)}%
                   </button>
-                  <button className="tinybtn" onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(2)))} aria-label="Zoom in">
+                  <button className="tinybtn" onClick={() => setZoom((z) => Math.min(1.6, +(z + 0.1).toFixed(2)))} aria-label={t('Zoom in')}>
                     ＋
                   </button>
                 </span>
                 <button className="tinybtn" onClick={addRoute}>
-                  + Route
+                  {t('+ Route')}
                 </button>
                 {!layout.showRight && (
                   <button className="tinybtn" onClick={() => setLayout((l) => ({ ...l, showRight: true }))}>
-                    Editor ▸
+                    {t('Editor ▸')}
                   </button>
                 )}
               </span>
@@ -650,18 +682,18 @@ function Studio({ project }: { project: Project }) {
               <div className="canvas-empty">
                 <EmptyState
                   icon="⇢"
-                  title="Start your first route"
-                  text="A route reads from one endpoint and runs steps for each message. Create one, import an existing YAML/XML file, or start from a recipe."
+                  title={t('Start your first route')}
+                  text={t('A route reads from one endpoint and runs steps for each message. Create one, import an existing YAML/XML file, or start from a recipe.')}
                   action={
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
                       <button className="btn primary" onClick={addRoute}>
-                        + New route
+                        {t('+ New route')}
                       </button>
                       <button className="btn" onClick={importFile}>
-                        ↑ Import file
+                        {t('↑ Import file')}
                       </button>
                       <button className="btn ghost" onClick={() => navigate('/kb')}>
-                        Browse recipes
+                        {t('Browse recipes')}
                       </button>
                     </div>
                   }
@@ -670,16 +702,18 @@ function Studio({ project }: { project: Project }) {
             ) : (
               <FlowCanvas file={file} h={handlers} zoom={zoom} />
             )}
-
           </main>
+          {!empty && <Minimap canvas={canvasRef} version={`${zoom}:${collapsed.size}:${JSON.stringify(file).length}`} />}
+          </div>
           {layout.showRight && (
             <>
               <Resizer onDrag={(dx) => setLayout((l) => ({ ...l, right: Math.min(760, Math.max(300, l.right - dx)) }))} />
-              <aside className="side right" aria-label="Editor">
+              <aside className="side right" aria-label={t('Editor')}>
                 <div className="tabs" role="tablist">
                   {(
                     [
                       ['props', 'Properties'],
+                      ['run', '▶ Run'],
                       ['yaml', 'route.yaml'],
                       ['xml', 'route.xml'],
                       ['java', 'route.java'],
@@ -687,15 +721,33 @@ function Studio({ project }: { project: Project }) {
                     ] as const
                   ).map(([k, label]) => (
                     <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'active' : ''} onClick={() => setTab(k)}>
-                      {label}
+                      {t(label)}
                     </button>
                   ))}
-                  <button style={{ marginLeft: 'auto' }} onClick={() => setLayout((l) => ({ ...l, showRight: false }))} aria-label="Hide editor panel" title="Hide panel">
+                  <button style={{ marginLeft: 'auto' }} onClick={() => setLayout((l) => ({ ...l, showRight: false }))} aria-label={t('Hide editor panel')} title={t('Hide panel')}>
                     ⇥
                   </button>
                 </div>
-                {tab === 'props' ? (
-                  <Inspector node={node} issues={issues} mutate={(nid, fn) => commit(updateNode(file, nid, fn), nid)} onDelete={remove} onDuplicate={duplicate} onSaveSnippet={saveSnippet} multiCount={multi.size} />
+                {tab === 'run' ? (
+                  <RunPanel
+                    file={file}
+                    projectId={project.id}
+                    projectName={project.name}
+                    selected={selected}
+                    breakpoints={breakpoints}
+                    onToggleBreakpoint={(id) =>
+                      setBreakpoints((b) => {
+                        const n = new Set(b);
+                        if (n.has(id)) n.delete(id);
+                        else n.add(id);
+                        return n;
+                      })
+                    }
+                    onTrace={setTraceView}
+                    onSelect={(id) => setSelected(id)}
+                  />
+                ) : tab === 'props' ? (
+                  <Inspector node={node} issues={issues} mutate={(nid, fn) => commit(updateNode(file, nid, fn), nid)} onDelete={remove} onDuplicate={duplicate} onSaveSnippet={saveSnippet} multiCount={multi.size} beans={file.beans ?? []} onBeansChange={(beans) => commit(beans.length ? { ...file, beans } : (({ beans: _b, ...rest }) => rest)(file), BEANS_ID)} configIds={(file.routeConfigurations ?? []).map((c) => c.configId)} onAddConfigHandler={addConfigHandler} />
                 ) : (
                   <CodePanel tab={tab} file={file} onChange={(f) => commit(f, `code-${tab}`)} projectName={project.name} />
                 )}

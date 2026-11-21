@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { t } from '../../app/i18n';
 import { COMPONENTS, COMPONENT_CATEGORIES } from '../../core/catalog';
 import { EIPS, EIP_CATEGORIES } from '../../core/eip';
 import { snippetStore, snippets } from '../../app/snippets';
@@ -32,35 +33,41 @@ function match(i: Item, q: string) {
   return `${i.label} ${i.hint} ${i.group}`.toLowerCase().includes(q);
 }
 
-export function Palette({ onAdd, onAddErrorHandler, onAddRoute, onAddRest }: { onAdd(p: DropPayload): void; onAddErrorHandler(): void; onAddRoute(): void; onAddRest(): void }) {
+export function Palette({ onAdd, onAddErrorHandler, onAddRoute, onAddRest, onAddBeans, onAddRouteConfig }: { onAdd(p: DropPayload): void; onAddErrorHandler(): void; onAddRoute(): void; onAddRest(): void; onAddBeans(): void; onAddRouteConfig(): void }) {
   const [q, setQ] = useState('');
   const mySnippets = useStore(snippetStore, (s) => s);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => Object.fromEntries(COMPONENT_CATEGORIES.map((c) => [`Components · ${c}`, true])));
   const s = q.trim().toLowerCase();
   const items = useMemo(() => (s ? ITEMS.filter((i) => match(i, s)) : ITEMS), [s]);
   return (
-    <aside className="side palette" aria-label="Components">
+    <aside className="side palette" aria-label={t('Components')}>
       <div className="side-head">
-        <span>Components</span>
+        <span>{t('Components')}</span>
         <span className="muted" style={{ fontWeight: 400 }}>
           {ITEMS.length}
         </span>
       </div>
       <div style={{ padding: '0 14px 6px' }}>
-        <input className="input" placeholder="Search EIPs & components…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search components" />
+        <input className="input" placeholder={t('Search EIPs & components…')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('Search components')} />
       </div>
       <div className="side-scroll">
         {!s && (
           <>
-            <div className="group-title">Structure</div>
-            <button className="component" onClick={onAddRoute} title="Add a new route to this file">
-              <i>⇢</i> New route
+            <div className="group-title">{t('Structure')}</div>
+            <button className="component" onClick={onAddRoute} title={t('Add a new route to this file')}>
+              <i>⇢</i> {t('New route')}
             </button>
-            <button className="component" onClick={onAddErrorHandler} title="Global onException handler with retries">
-              <i style={{ color: 'var(--red)' }}>⚑</i> Error handler <small>onException</small>
+            <button className="component" onClick={onAddErrorHandler} title={t('Global onException handler with retries')}>
+              <i style={{ color: 'var(--red)' }}>⚑</i> {t('Error handler')} <small>onException</small>
             </button>
-            <button className="component" onClick={onAddRest} title="REST DSL: map HTTP operations to routes">
-              <i style={{ color: 'var(--cyan)' }}>⇄</i> REST API <small>rest</small>
+            <button className="component" onClick={onAddRest} title={t('REST DSL: map HTTP operations to routes')}>
+              <i style={{ color: 'var(--cyan)' }}>⇄</i> {t('REST API')} <small>rest</small>
+            </button>
+            <button className="component" onClick={onAddRouteConfig} title={t('Reusable error handling that routes can opt into')}>
+              <i style={{ color: 'var(--red)' }}>⚑</i> {t('Route configuration')}
+            </button>
+            <button className="component" onClick={onAddBeans} title={t('Beans created by Camel (strategies, repositories…)')}>
+              <i>☕</i> {t('Bean')} <small>beans</small>
             </button>
           </>
         )}
@@ -70,7 +77,7 @@ export function Palette({ onAdd, onAddErrorHandler, onAddRoute, onAddRest }: { o
           return (
             <div>
               <div className="group-title">
-                <span>My snippets</span>
+                <span>{t('My snippets')}</span>
                 <span>{list.length}</span>
               </div>
               {list.map((x) => (
@@ -109,7 +116,7 @@ export function Palette({ onAdd, onAddErrorHandler, onAddRoute, onAddRest }: { o
           return (
             <div key={g}>
               <button className="group-title" onClick={() => setCollapsed((c) => ({ ...c, [g]: !c[g] }))} aria-expanded={!isCollapsed}>
-                <span>{g}</span>
+                <span>{g.startsWith('Components · ') ? `${t('Components')} · ${t(g.slice(13))}` : t(g)}</span>
                 <span>{isCollapsed ? `▸ ${list.length}` : '▾'}</span>
               </button>
               {!isCollapsed &&
@@ -124,7 +131,7 @@ export function Palette({ onAdd, onAddErrorHandler, onAddRoute, onAddRest }: { o
                     onKeyDown={(e) => e.key === 'Enter' && onAdd(i.payload)}
                     role="button"
                     tabIndex={0}
-                    title={`${i.hint}\nDrag onto the canvas, or click to append to the selected block.`}
+                    title={`${i.group.startsWith('Components') ? i.hint : t(i.hint)}\n${t('Drag onto the canvas, or click to append to the selected block.')}`}
                   >
                     <i>{i.icon}</i> {i.label}
                   </div>
@@ -152,11 +159,11 @@ export function QuickAdd({ anchor, onPick, onClose }: { anchor: DOMRect; onPick(
   const top = Math.min(anchor.bottom + 6, window.innerHeight - 360);
   const left = Math.min(Math.max(8, anchor.left - 120), window.innerWidth - 290);
   return (
-    <div className="quick-add" ref={ref} style={{ top, left }} role="dialog" aria-label="Insert step">
+    <div className="quick-add" ref={ref} style={{ top, left }} role="dialog" aria-label={t('Insert step')}>
       <input
         className="input"
         autoFocus
-        placeholder="Insert step… (try “split” or “kafka”)"
+        placeholder={t('Insert step… (try “split” or “kafka”)')}
         value={q}
         onChange={(e) => (setQ(e.target.value), setActive(0))}
         onKeyDown={(e) => {
@@ -173,7 +180,7 @@ export function QuickAdd({ anchor, onPick, onClose }: { anchor: DOMRect; onPick(
             <small>{i.group.replace('Components · ', '')}</small>
           </button>
         ))}
-        {!list.length && <div className="muted" style={{ padding: 10, fontSize: 12 }}>Nothing found</div>}
+        {!list.length && <div className="muted" style={{ padding: 10, fontSize: 12 }}>{t('Nothing found')}</div>}
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { t } from '../../app/i18n';
 import { toast } from '../../app/store';
 import { endpointTableMarkdown, toMermaid } from '../../core/docs';
 import { endpoints, type CamelFile } from '../../core/model';
@@ -61,7 +62,7 @@ function DslEditor({ file, lang, onChange, projectName }: { file: CamelFile; lan
         </span>
         <span className="grow" />
         <button className="tinybtn" onClick={() => copy(text)}>
-          Copy
+          {t('Copy')}
         </button>
         <button className="tinybtn" onClick={() => download(`${slugify(projectName)}.camel.${lang}`, text, lang === 'yaml' ? 'application/yaml' : 'application/xml')}>
           ↓ .{lang}
@@ -75,7 +76,7 @@ function DslEditor({ file, lang, onChange, projectName }: { file: CamelFile; lan
       ) : (
         <div className="editor-foot">
           <span>{lang === 'yaml' ? 'YAML DSL · Camel 4' : 'XML IO DSL · Camel 4'}</span>
-          <span className="c-ok">✓ in sync with canvas</span>
+          <span className="c-ok">{t('✓ in sync with canvas')}</span>
         </div>
       )}
     </div>
@@ -92,13 +93,13 @@ function JavaView({ file, projectName }: { file: CamelFile; projectName: string 
         </span>
         <span className="grow" />
         <button className="tinybtn" onClick={() => copy(code)}>
-          Copy
+          {t('Copy')}
         </button>
       </div>
-      <CodeEditor value={code} lang="java" readOnly label="Java source" />
+      <CodeEditor value={code} lang="java" readOnly label={t('Java source')} />
       <div className="editor-foot">
         <span>Java import arrives in a later release</span>
-        <span>RouteBuilder</span>
+        <span>{t('RouteBuilder')}</span>
       </div>
     </div>
   );
@@ -116,9 +117,9 @@ function DocsView({ file, projectName }: { file: CamelFile; projectName: string 
         <table className="tbl">
           <thead>
             <tr>
-              <th>Route</th>
-              <th>Dir</th>
-              <th>Endpoint</th>
+              <th>{t('Route')}</th>
+              <th>{t('Dir')}</th>
+              <th>{t('Endpoint')}</th>
             </tr>
           </thead>
           <tbody>
@@ -134,13 +135,13 @@ function DocsView({ file, projectName }: { file: CamelFile; projectName: string 
           </tbody>
         </table>
       ) : (
-        <p className="muted">No endpoints yet.</p>
+        <p className="muted">{t('No endpoints yet.')}</p>
       )}
       <div className="subhead" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span>Mermaid diagram</span>
+        <span>{t('Mermaid diagram')}</span>
         <span style={{ display: 'flex', gap: 6 }}>
           <button className="tinybtn" onClick={() => copy(mermaid)}>
-            Copy
+            {t('Copy')}
           </button>
           <button
             className="tinybtn"
@@ -157,7 +158,7 @@ function DocsView({ file, projectName }: { file: CamelFile; projectName: string 
         </span>
       </div>
       <pre className="block">{mermaid}</pre>
-      <p className="hint">Paste into GitHub, GitLab or Confluence markdown — they render Mermaid natively.</p>
+      <p className="hint">{t('Paste into GitHub, GitLab or Confluence markdown — they render Mermaid natively.')}</p>
     </div>
   );
 }

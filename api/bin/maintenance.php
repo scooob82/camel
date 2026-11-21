@@ -22,13 +22,18 @@ $db = new Db($config);
 
 $tokens = $db->exec('DELETE FROM tokens WHERE expires_at < ? OR used_at IS NOT NULL AND used_at < ?', [now(), now() - 7 * 86400000]);
 $limits = (new RateLimiter($db))->prune();
+$errors = 0;
+if ($db->value("SELECT COUNT(*) FROM schema_migrations WHERE version = '002_admin_telemetry'")) {
+    $errors = $db->exec('DELETE FROM client_errors WHERE created_at < ?', [now() - 90 * 86400000]); // privacy policy: 90 days
+    $db->exec('DELETE FROM page_views WHERE day < ?', [gmdate('Y-m-d', time() - 400 * 86400)]);
+}
 
 $dir = $config->storage('backups');
 $file = sprintf('%s/backup-%s.json.gz', $dir, date('Ymd-His'));
 $gz = gzopen($file, 'wb6');
 gzwrite($gz, '{"createdAt":' . now() . ',"tables":{');
 $first = true;
-foreach (['users', 'projects', 'versions'] as $table) {
+foreach (['users', 'projects', 'versions', 'user_settings'] as $table) {
     gzwrite($gz, ($first ? '' : ',') . json_encode($table) . ':[');
     $first = false;
     $st = $db->pdo->query("SELECT * FROM $table");
@@ -47,4 +52,4 @@ foreach (array_slice($all, 14) as $old) {
     @unlink($old);
 }
 
-printf("[%s] tokens pruned: %d, rate limits pruned: %d, backup: %s\n", date('c'), $tokens, $limits, basename($file));
+printf("[%s] tokens pruned: %d, rate limits pruned: %d, old client errors: %d, backup: %s\n", date('c'), $tokens, $limits, $errors, basename($file));

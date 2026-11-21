@@ -48,6 +48,8 @@ export const STEP_TYPES = [
   'routingSlip',
   'dynamicRouter',
   'threads',
+  'saga',
+  'onCompletion',
 ] as const;
 export type StepType = (typeof STEP_TYPES)[number];
 
@@ -88,6 +90,8 @@ export interface Route {
   kind: 'route';
   routeId: string;
   description?: string;
+  /** Applies the error handling of a routeConfiguration with this id. */
+  routeConfigurationId?: string;
   from: { uri: string };
   steps: Step[];
 }
@@ -127,10 +131,29 @@ export interface RestDef {
   verbs: RestVerb[];
 }
 
+/** Bean created by Camel (YAML/XML DSL "beans"). */
+export interface BeanDef {
+  id: string;
+  name: string;
+  type: string;
+  properties: [string, string][];
+}
+
+/** Reusable error handling that routes opt into with routeConfigurationId. */
+export interface RouteConfigDef {
+  id: string;
+  kind: 'routeConfiguration';
+  configId: string;
+  description?: string;
+  onExceptions: OnException[];
+}
+
 export interface CamelFile {
   routes: Route[];
   onExceptions: OnException[];
   rests?: RestDef[];
+  beans?: BeanDef[];
+  routeConfigurations?: RouteConfigDef[];
   /** Top-level YAML elements we do not model (beans, rest, ...). Re-emitted untouched in YAML. */
   extras?: unknown[];
 }
@@ -155,6 +178,19 @@ export function newRoute(routeId = 'route-1', uri = 'timer:tick?period=5000'): R
 
 export function newRest(): RestDef {
   return { id: uid('rest'), kind: 'rest', path: '/api', verbs: [{ id: uid('verb'), method: 'get', path: '/hello', to: 'direct:hello' }] };
+}
+
+export function newBean(): BeanDef {
+  return { id: uid('bean'), name: 'myBean', type: 'com.example.MyBean', properties: [] };
+}
+
+export function newRouteConfiguration(configId = 'errorHandling'): RouteConfigDef {
+  return { id: uid('rc'), kind: 'routeConfiguration', configId, onExceptions: [] };
+}
+
+/** All onException blocks: global ones and those inside routeConfigurations. */
+export function allOnExceptions(file: CamelFile): OnException[] {
+  return [...file.onExceptions, ...(file.routeConfigurations ?? []).flatMap((c) => c.onExceptions)];
 }
 
 export function newOnException(): OnException {
@@ -184,7 +220,7 @@ export function walkSteps(file: CamelFile, fn: (step: Step, parent: Container) =
     }
   };
   file.routes.forEach(visit);
-  file.onExceptions.forEach(visit);
+  allOnExceptions(file).forEach(visit);
 }
 
 /** All endpoint URIs used in the file (from + to/toD/wireTap). */
@@ -204,7 +240,7 @@ export function endpoints(file: CamelFile): { routeId: string; direction: 'consu
     out.push({ routeId: r.routeId, direction: 'consumer', type: 'from', uri: r.from.uri });
     visit(r.routeId, r.steps);
   }
-  for (const ex of file.onExceptions) visit(`onException(${ex.exceptions.join(', ')})`, ex.steps);
+  for (const ex of allOnExceptions(file)) visit(`onException(${ex.exceptions.join(', ')})`, ex.steps);
   for (const r of file.rests ?? []) for (const v of r.verbs) out.push({ routeId: `rest ${v.method.toUpperCase()} ${joinPath(r.path, v.path)}`, direction: 'producer', type: 'rest', uri: v.to });
   return out;
 }

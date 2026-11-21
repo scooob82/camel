@@ -1,5 +1,6 @@
 import { EIP_BY_TYPE } from '../core/eip';
 import { isKnown, uid, type Step } from '../core/model';
+import { api } from './api';
 import { createStore, storage } from './store';
 
 /** Personal library of reusable steps ("snippets"), stored in this browser. */
@@ -13,9 +14,37 @@ export interface Snippet {
 const KEY = 'cas.snippets.v1';
 export const snippetStore = createStore<Snippet[]>(storage.read<Snippet[]>(KEY, []));
 
+let remote = false;
+let timer: ReturnType<typeof setTimeout> | undefined;
+
 function save(list: Snippet[]) {
   snippetStore.set(() => list);
-  storage.write(KEY, list);
+  if (!remote) {
+    storage.write(KEY, list);
+    return;
+  }
+  clearTimeout(timer);
+  timer = setTimeout(() => api('PUT', '/settings/snippets', { snippets: list }).catch(() => undefined), 800);
+}
+
+/** Signed in: use the account's library (browser snippets are merged in once). */
+export async function loadAccountSnippets() {
+  const r = await api<{ snippets: Snippet[] }>('GET', '/settings/snippets');
+  const local = storage.read<Snippet[]>(KEY, []);
+  const merged = [...r.snippets, ...local.filter((l) => !r.snippets.some((x) => x.id === l.id))];
+  remote = true;
+  snippetStore.set(() => merged);
+  if (merged.length !== r.snippets.length) {
+    await api('PUT', '/settings/snippets', { snippets: merged });
+    storage.write(KEY, []);
+  }
+}
+
+/** Signed out: back to the browser library. */
+export function loadBrowserSnippets() {
+  remote = false;
+  clearTimeout(timer);
+  snippetStore.set(() => storage.read<Snippet[]>(KEY, []));
 }
 
 export function snippetName(step: Step): string {

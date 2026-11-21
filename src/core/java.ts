@@ -107,6 +107,23 @@ function step(s: Step, depth: number, out: string[]): void {
     case 'threads':
       line(`.threads(${[p.poolSize, p.poolSize && p.maxPoolSize].filter(Boolean).join(', ')})`);
       return;
+    case 'saga': {
+      let c = '.saga()';
+      if (p.propagation) c += `.propagation(SagaPropagation.${p.propagation})`;
+      if (p.completionMode) c += `.completionMode(SagaCompletionMode.${p.completionMode})`;
+      if (p.timeout) c += `.timeout(java.time.Duration.ofMillis(${p.timeout}))`;
+      if (p.compensation) c += `.compensation(${q(p.compensation)})`;
+      if (p.completion) c += `.completion(${q(p.completion)})`;
+      line(c);
+      steps(s.steps, depth + 1, out);
+      line('.end()');
+      return;
+    }
+    case 'onCompletion':
+      line(`.onCompletion()${p.onCompleteOnly === 'true' ? '.onCompleteOnly()' : ''}${p.onFailureOnly === 'true' ? '.onFailureOnly()' : ''}`);
+      steps(s.steps, depth + 1, out);
+      line('.end()');
+      return;
     case 'circuitBreaker':
       line('.circuitBreaker()');
       steps(s.steps, depth + 1, out);
@@ -178,8 +195,8 @@ function step(s: Step, depth: number, out: string[]): void {
   line('.end()');
 }
 
-function onException(ex: OnException, out: string[]): void {
-  let head = `        onException(${(ex.exceptions.length ? ex.exceptions : ['java.lang.Exception']).map(cls).join(', ')})`;
+function onException(ex: OnException, out: string[], prefix = ''): void {
+  let head = `        ${prefix}onException(${(ex.exceptions.length ? ex.exceptions : ['java.lang.Exception']).map(cls).join(', ')})`;
   if (ex.handled) head += '\n            .handled(true)';
   if (ex.maximumRedeliveries) head += `\n            .maximumRedeliveries(${ex.maximumRedeliveries})`;
   if (ex.redeliveryDelay) head += `\n            .redeliveryDelay(${ex.redeliveryDelay})`;
@@ -208,6 +225,7 @@ function rest(r: RestDef, out: string[]): void {
 function route(r: Route, out: string[]): void {
   out.push(`        from(${q(r.from.uri)})`);
   out.push(`            .routeId(${q(r.routeId)})`);
+  if (r.routeConfigurationId) out.push(`            .routeConfigurationId(${q(r.routeConfigurationId)})`);
   if (r.description) out.push(`            .routeDescription(${q(r.description)})`);
   steps(r.steps, 3, out);
   out[out.length - 1] += ';';
@@ -218,11 +236,15 @@ export function toJava(file: CamelFile, projectName = 'Camel', pkg = 'com.exampl
   const name = className(projectName);
   const json = JSON.stringify(file);
   const usesLevel = /"loggingLevel":"[A-Z]/.test(json) || /"logName":"[^"]/.test(json);
+  const usesSaga = /"propagation":"[A-Z]/.test(json) || /"completionMode":"[A-Z]/.test(json);
+  const configs = file.routeConfigurations ?? [];
   const out: string[] = [
     `package ${pkg};`,
     '',
     ...(usesLevel ? ['import org.apache.camel.LoggingLevel;'] : []),
     'import org.apache.camel.builder.RouteBuilder;',
+    ...(configs.length ? ['import org.apache.camel.builder.RouteConfigurationBuilder;'] : []),
+    ...(usesSaga ? ['import org.apache.camel.model.SagaCompletionMode;', 'import org.apache.camel.model.SagaPropagation;'] : []),
     'import org.springframework.stereotype.Component;',
     '',
     '@Component',
@@ -231,11 +253,26 @@ export function toJava(file: CamelFile, projectName = 'Camel', pkg = 'com.exampl
     '    @Override',
     '    public void configure() throws Exception {',
   ];
+  if ((file.beans ?? []).length) {
+    out.push('        // Beans are defined in Spring, e.g. a @Bean method in a @Configuration class:');
+    for (const b of file.beans ?? []) out.push(`        //   @Bean("${b.name}") ${b.type.split('.').pop()} ${b.name.replace(/\W/g, '')}() { ... }`);
+    out.push('');
+  }
   file.onExceptions.forEach((ex) => onException(ex, out));
   (file.rests ?? []).forEach((r) => rest(r, out));
   file.routes.forEach((r) => route(r, out));
   if (!file.routes.length && !file.onExceptions.length) out.push('        // No routes yet');
   if (out[out.length - 1] === '') out.pop();
-  out.push('    }', '}', '');
+  out.push('    }');
+  for (const c of configs) {
+    const cls = className(c.configId).replace(/RouteBuilder$/, 'Configuration');
+    out.push('', '    @Component', `    public static class ${cls} extends RouteConfigurationBuilder {`, '', '        @Override', '        public void configuration() throws Exception {');
+    const inner: string[] = [];
+    c.onExceptions.forEach((ex) => onException(ex, inner, `routeConfiguration(${q(c.configId)}).`));
+    out.push(...inner.map((l) => (l ? `    ${l}` : l)));
+    if (out[out.length - 1] === '') out.pop();
+    out.push('        }', '    }');
+  }
+  out.push('}', '');
   return out.join('\n');
 }

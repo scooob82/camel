@@ -93,9 +93,10 @@ await step('pan canvas', async () => {
   const c = page.locator('main.canvas');
   await c.evaluate((el) => { el.scrollLeft = 0; });
   const box = await c.boundingBox();
-  await page.mouse.move(box.x + box.width - 40, box.y + box.height - 40);
+  // start on empty canvas (bottom-left; the minimap sits bottom-right)
+  await page.mouse.move(box.x + 420, box.y + box.height - 18);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width - 240, box.y + box.height - 40, { steps: 5 });
+  await page.mouse.move(box.x + 220, box.y + box.height - 18, { steps: 5 });
   await page.mouse.up();
   const left = await c.evaluate((el) => el.scrollLeft);
   if (left <= 0) throw new Error('no pan, scrollLeft=' + left);

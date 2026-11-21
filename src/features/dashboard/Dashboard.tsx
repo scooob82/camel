@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { t } from '../../app/i18n';
 import { href, navigate } from '../../app/router';
 import { authStore } from '../../app/session';
 import { appStore, importLocalProjects, localProjects, projects, toast, useStore, type Project } from '../../app/store';
@@ -21,7 +22,7 @@ function ago(t: number): string {
 
 function MiniFlow({ p }: { p: Project }) {
   const r = p.file.routes[0];
-  if (!r) return <div className="mini-flow muted" style={{ fontSize: 11 }}>No routes yet</div>;
+  if (!r) return <div className="mini-flow muted" style={{ fontSize: 11 }}>{t('No routes yet')}</div>;
   const icons = ['⇢', ...r.steps.slice(0, 7).map((s) => (isKnown(s) ? EIP_BY_TYPE[s.type]?.icon ?? '•' : '?'))];
   return (
     <div className="mini-flow" aria-hidden>
@@ -48,16 +49,16 @@ function NewProjectDialog({ onClose }: { onClose(): void }) {
   };
   return (
     <Modal
-      title="New project"
-      description="Projects group related routes, error handlers and versions."
+      title={t('New project')}
+      description={t('Projects group related routes, error handlers and versions.')}
       onClose={onClose}
       footer={
         <>
           <button className="btn ghost" onClick={onClose}>
-            Cancel
+            {t('Cancel')}
           </button>
           <button className="btn primary" onClick={create}>
-            Create project
+            {t('Create project')}
           </button>
         </>
       }
@@ -65,13 +66,13 @@ function NewProjectDialog({ onClose }: { onClose(): void }) {
       <form onSubmit={(e) => (e.preventDefault(), create())}>
         <div className="field">
           <label htmlFor="np-name">
-            <span>Name</span>
+            <span>{t('Name')}</span>
           </label>
-          <input id="np-name" className="input" style={{ fontSize: 13, padding: '10px 12px' }} placeholder="e.g. Orders integration" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
+          <input id="np-name" className="input" style={{ fontSize: 13, padding: '10px 12px' }} placeholder={t('e.g. Orders integration')} value={name} onChange={(e) => setName(e.target.value)} maxLength={80} />
         </div>
       </form>
       <div className="field-label" style={{ marginBottom: 8 }}>
-        Start from
+        {t('Start from')}
       </div>
       <div className="option-list">
         <button className={`option ${template === 'blank' ? 'selected' : ''}`} onClick={() => setTemplate('blank')}>
@@ -79,8 +80,8 @@ function NewProjectDialog({ onClose }: { onClose(): void }) {
             ＋
           </div>
           <div>
-            <b>Blank project</b>
-            <span>One empty route with a timer trigger.</span>
+            <b>{t('Blank project')}</b>
+            <span>{t('One empty route with a timer trigger.')}</span>
           </div>
         </button>
         {RECIPES.map((r) => (
@@ -135,26 +136,26 @@ export function Dashboard() {
     <main className="wrap page">
       <div className="page-head">
         <div>
-          <div className="tag">Workspace</div>
-          <h1>Projects</h1>
+          <div className="tag">{t('Workspace')}</div>
+          <h1>{t('Projects')}</h1>
           <p>
             {mode === 'remote' ? (
               <>Synced to your account{auth.user ? ` (${auth.user.email})` : ''} — available on every device.</>
             ) : auth.status === 'anonymous' ? (
               <>
-                Saved in this browser. <a href={href('/register')}>Create a free account</a> or <a href={href('/login')}>sign in</a> to sync across devices.
+                Saved in this browser. <a href={href('/register')}>{t('Create a free account')}</a> or <a href={href('/login')}>{t('sign in')}</a> to sync across devices.
               </>
             ) : (
-              <>Saved in this browser.</>
+              <>{t('Saved in this browser.')}</>
             )}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn" onClick={importFile}>
-            ↑ Import routes / API contract
+            {t('↑ Import routes / API contract')}
           </button>
           <button className="btn primary" onClick={() => setCreating(true)}>
-            + New project
+            {t('+ New project')}
           </button>
         </div>
       </div>
@@ -183,7 +184,7 @@ export function Dashboard() {
         <div className="banner subtle">
           <span>Please confirm your e-mail address — we sent a link to {auth.user.email}.</span>
           <a className="btn sm" href={href('/account')}>
-            Resend
+            {t('Resend')}
           </a>
         </div>
       )}
@@ -191,46 +192,46 @@ export function Dashboard() {
       <div className="stat-row">
         <div className="card stat">
           <b>{list.length}</b>
-          <span>Projects</span>
+          <span>{t('Projects')}</span>
         </div>
         <div className="card stat">
           <b>{routes}</b>
-          <span>Routes</span>
+          <span>{t('Routes')}</span>
         </div>
         <div className="card stat">
           <b>{versions}</b>
-          <span>Saved versions</span>
+          <span>{t('Saved versions')}</span>
         </div>
         <div className="card stat">
           <b className={errors ? 'c-err' : 'c-ok'}>{errors}</b>
-          <span>Validation errors</span>
+          <span>{t('Validation errors')}</span>
         </div>
       </div>
 
       {list.length > 0 && (
         <div style={{ marginBottom: 18 }}>
-          <input className="input search-lg" placeholder="Search projects and routes…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search projects" />
+          <input className="input search-lg" placeholder={t('Search projects and routes…')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('Search projects')} />
         </div>
       )}
 
       {!list.length ? (
         <EmptyState
           icon="⇢"
-          title="No projects yet"
-          text="Create a blank project, start from a proven recipe, import Camel routes you already have — or generate routes from an OpenAPI, AsyncAPI or WSDL contract."
+          title={t('No projects yet')}
+          text={t('Create a blank project, start from a proven recipe, import Camel routes you already have — or generate routes from an OpenAPI, AsyncAPI or WSDL contract.')}
           action={
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}>
               <button className="btn primary" onClick={() => setCreating(true)}>
-                + New project
+                {t('+ New project')}
               </button>
               <button className="btn" onClick={importFile}>
-                ↑ Import file
+                {t('↑ Import file')}
               </button>
             </div>
           }
         />
       ) : !filtered.length ? (
-        <EmptyState icon="⌕" title="Nothing matches" text={`No project or route matches “${q}”.`} action={<button className="btn" onClick={() => setQ('')}>Clear search</button>} />
+        <EmptyState icon="⌕" title={t('Nothing matches')} text={`No project or route matches “${q}”.`} action={<button className="btn" onClick={() => setQ('')}>{t('Clear search')}</button>} />
       ) : (
         <div className="grid3">
           {filtered.map((p) => (
@@ -251,7 +252,7 @@ export function Dashboard() {
               </div>
               <div className="actions">
                 <button className="tinybtn" onClick={() => navigate(`/builder/${p.id}`)}>
-                  Open
+                  {t('Open')}
                 </button>
                 <button
                   className="tinybtn"
@@ -260,10 +261,10 @@ export function Dashboard() {
                     toast('Project duplicated', 'success');
                   }}
                 >
-                  Duplicate
+                  {t('Duplicate')}
                 </button>
                 <button className="tinybtn" onClick={() => setDeleting(p)} style={{ marginLeft: 'auto', color: 'var(--red)' }} aria-label={`Delete ${p.name}`}>
-                  Delete
+                  {t('Delete')}
                 </button>
               </div>
             </article>
@@ -273,11 +274,11 @@ export function Dashboard() {
 
       <div className="section-head" style={{ marginTop: 54 }}>
         <div>
-          <div className="tag">Templates</div>
-          <h2 style={{ fontSize: 22 }}>Start from a recipe</h2>
+          <div className="tag">{t('Templates')}</div>
+          <h2 style={{ fontSize: 22 }}>{t('Start from a recipe')}</h2>
         </div>
         <a className="btn ghost" href={href('/kb')}>
-          All recipes →
+          {t('All recipes →')}
         </a>
       </div>
       <div className="features">
@@ -295,7 +296,7 @@ export function Dashboard() {
         <Confirm
           title={`Delete “${deleting.name}”?`}
           message={`This removes the project, its ${deleting.file.routes.length} route(s) and ${deleting.versions.length} saved version(s) from this browser. This cannot be undone.`}
-          confirmLabel="Delete project"
+          confirmLabel={t('Delete project')}
           danger
           onConfirm={() => {
             projects.remove(deleting.id);

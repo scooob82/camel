@@ -94,6 +94,25 @@ export const EIPS: EipDef[] = [
   { type: 'threads', label: 'threads', icon: '⫴', category: 'Control', summary: 'Continue the route asynchronously in a thread pool.', props: [{ name: 'poolSize', label: 'Pool size', kind: 'number', placeholder: '10' }, { name: 'maxPoolSize', label: 'Max pool size', kind: 'number', placeholder: '20' }], docs: docs('threads-eip') },
 
   // Error handling
+  {
+    type: 'saga', label: 'saga', icon: '⇋', category: 'Error handling', summary: 'Long-running transaction with compensation (undo) and completion actions.', container: 'steps',
+    props: [
+      { name: 'propagation', label: 'Propagation', kind: 'select', options: ['', 'REQUIRED', 'REQUIRES_NEW', 'MANDATORY', 'SUPPORTS', 'NOT_SUPPORTED', 'NEVER'] },
+      { name: 'completionMode', label: 'Completion mode', kind: 'select', options: ['', 'AUTO', 'MANUAL'] },
+      { name: 'timeout', label: 'Timeout (ms)', kind: 'number' },
+      { name: 'compensation', label: 'Compensation endpoint (undo)', kind: 'text', placeholder: 'direct:cancel-order' },
+      { name: 'completion', label: 'Completion endpoint', kind: 'text', placeholder: 'direct:order-done' },
+    ],
+    docs: docs('saga-eip'),
+  },
+  {
+    type: 'onCompletion', label: 'onCompletion', icon: '⤓', category: 'Error handling', summary: 'Run steps after the exchange is done (e.g. notify, clean up).', container: 'steps',
+    props: [
+      { name: 'onCompleteOnly', label: 'Only when successful', kind: 'boolean' },
+      { name: 'onFailureOnly', label: 'Only when failed', kind: 'boolean' },
+    ],
+    docs: docs('onCompletion'),
+  },
   { type: 'circuitBreaker', label: 'circuitBreaker', icon: '⚡', category: 'Error handling', summary: 'Stop calling a failing service and use a fallback (Resilience4j).', container: 'circuitBreaker', props: [], docs: docs('circuitBreaker-eip') },
   { type: 'doTry', label: 'doTry / doCatch', icon: '⚑', category: 'Error handling', summary: 'Try/catch/finally block inside a route.', container: 'doTry', props: [], docs: docs('doTry') },
 ];
@@ -164,6 +183,13 @@ export function newStep(type: StepType, uri?: string): KnownStep {
       break;
     case 'process':
       step.props.ref = 'myProcessor';
+      break;
+    case 'saga':
+      step.props.propagation = 'REQUIRED';
+      step.props.compensation = 'direct:compensate';
+      break;
+    case 'onCompletion':
+      step.props.onCompleteOnly = 'true';
       break;
   }
   if (def?.container === 'steps') step.steps = [];

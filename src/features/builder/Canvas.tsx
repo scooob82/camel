@@ -1,6 +1,8 @@
 import { useState, type DragEvent, type ReactNode } from 'react';
+import { t } from '../../app/i18n';
 import { EIP_BY_TYPE } from '../../core/eip';
-import { isKnown, joinPath, type Branch, type CamelFile, type KnownStep, type OnException, type RestDef, type Route, type Step } from '../../core/model';
+import { BEANS_ID } from '../../core/edit';
+import { isKnown, joinPath, type BeanDef, type Branch, type CamelFile, type KnownStep, type OnException, type RestDef, type Route, type RouteConfigDef, type Step } from '../../core/model';
 import type { Severity } from '../../core/validate';
 
 export type DropPayload = { kind: 'eip'; type: string } | { kind: 'component'; uri: string } | { kind: 'move'; id: string } | { kind: 'snippet'; id: string };
@@ -16,6 +18,8 @@ export interface CanvasHandlers {
   onToggleCollapse?(id: string): void;
   status: Record<string, Severity>;
   readOnly?: boolean;
+  /** Run & Debug overlay. */
+  trace?: { visited: Set<string>; current?: string; breakpoints: Set<string>; uncovered?: Set<string> };
   onSelect(id: string | undefined, additive?: boolean): void;
   onDrop(containerId: string, index: number, payload: DropPayload): void;
   onQuickAdd(containerId: string, index: number, anchor: DOMRect): void;
@@ -59,8 +63,8 @@ function DropZone({ h, containerId, index, empty, first }: { h: CanvasHandlers; 
     >
       <button
         type="button"
-        aria-label="Insert step here"
-        title="Insert step (or drop a component here)"
+        aria-label={t('Insert step here')}
+        title={t('Insert step (or drop a component here)')}
         onClick={(e) => {
           e.stopPropagation();
           h.onQuickAdd(containerId, index, (e.currentTarget as HTMLElement).getBoundingClientRect());
@@ -132,6 +136,13 @@ function Status({ sev }: { sev?: Severity }) {
 
 const isSel = (h: CanvasHandlers, id: string) => h.selected === id || !!h.multi?.has(id);
 
+/** CSS classes for the Run & Debug overlay. */
+function traceCls(h: CanvasHandlers, id: string): string {
+  const t = h.trace;
+  if (!t) return '';
+  return [t.visited.has(id) ? 'visited' : '', t.current === id ? 'current' : '', t.breakpoints.has(id) ? 'bp' : '', t.uncovered?.has(id) ? 'uncovered' : ''].filter(Boolean).join(' ');
+}
+
 function Collapse({ h, id, count }: { h: CanvasHandlers; id: string; count: number }) {
   if (!h.onToggleCollapse) return null;
   const c = h.collapsed?.has(id);
@@ -167,7 +178,7 @@ function StepView({ h, step }: { h: CanvasHandlers; step: Step }) {
       <div className={`node unknown ${sel ? 'selected' : ''}`} onClick={select} {...drag(h, step.id)} role="button" tabIndex={0} aria-label={`Unsupported step ${step.name}`}>
         <div className="ico">?</div>
         <b>{step.name}</b>
-        <small>not editable visually</small>
+        <small>{t('not editable visually')}</small>
       </div>
     );
   }
@@ -175,7 +186,7 @@ function StepView({ h, step }: { h: CanvasHandlers; step: Step }) {
   const sev = h.status[step.id];
   if (!def.container) {
     return (
-      <div className={`node ${sel ? 'selected' : ''}`} onClick={select} onKeyDown={(e) => e.key === 'Enter' && select(e)} {...drag(h, step.id)} role="button" tabIndex={0} aria-label={`${def.label} step`} title={def.summary}>
+      <div className={`node ${sel ? 'selected' : ''} ${traceCls(h, step.id)}`} data-node={step.id} onClick={select} onKeyDown={(e) => e.key === 'Enter' && select(e)} {...drag(h, step.id)} role="button" tabIndex={0} aria-label={`${def.label} step`} title={def.summary}>
         <Status sev={sev} />
         <div className="ico">{def.icon}</div>
         <b>{def.label}</b>
@@ -184,7 +195,7 @@ function StepView({ h, step }: { h: CanvasHandlers; step: Step }) {
     );
   }
   const head = (
-    <div className="box-head" onClick={select} {...drag(h, step.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && select(e)} aria-label={`${def.label} block`}>
+    <div className={`box-head ${traceCls(h, step.id)}`} data-node={step.id} onClick={select} {...drag(h, step.id)} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && select(e)} aria-label={`${def.label} block`}>
       <span className="ico">{def.icon}</span>
       <b>{def.label}</b>
       <small>{subtitle(step)}</small>
@@ -214,7 +225,7 @@ function StepView({ h, step }: { h: CanvasHandlers; step: Step }) {
         {!h.readOnly && !hasFallback && (
           <div className="box-actions">
             <button className="tinybtn" onClick={() => h.onAddBranch(step.id, 'onFallback')}>
-              + onFallback
+              {t('+ onFallback')}
             </button>
           </div>
         )}
@@ -234,11 +245,11 @@ function StepView({ h, step }: { h: CanvasHandlers; step: Step }) {
         {!h.readOnly && (
           <div className="box-actions">
             <button className="tinybtn" onClick={() => h.onAddBranch(step.id, 'when')}>
-              + when
+              {t('+ when')}
             </button>
             {!hasOtherwise && (
               <button className="tinybtn" onClick={() => h.onAddBranch(step.id, 'otherwise')}>
-                + otherwise
+                {t('+ otherwise')}
               </button>
             )}
           </div>
@@ -265,11 +276,11 @@ function StepView({ h, step }: { h: CanvasHandlers; step: Step }) {
         {!h.readOnly && (
           <div className="box-actions">
             <button className="tinybtn" onClick={() => h.onAddBranch(step.id, 'doCatch')}>
-              + doCatch
+              {t('+ doCatch')}
             </button>
             {!hasFinally && (
               <button className="tinybtn" onClick={() => h.onAddBranch(step.id, 'doFinally')}>
-                + doFinally
+                {t('+ doFinally')}
               </button>
             )}
           </div>
@@ -330,7 +341,7 @@ function RestLane({ h, rest }: { h: CanvasHandlers; rest: RestDef }) {
         <Status sev={h.status[rest.id]} />
       </button>
       <div className={`rest-ops ${sel ? 'selected' : ''}`} onClick={pick} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && pick(e)}>
-        {rest.verbs.length === 0 && <span className="muted">No operations — select to add one</span>}
+        {rest.verbs.length === 0 && <span className="muted">{t('No operations — select to add one')}</span>}
         {rest.verbs.map((v) => (
           <div key={v.id} className="rest-op">
             <span className={`verb verb-${v.method}`}>{v.method.toUpperCase()}</span>
@@ -344,6 +355,50 @@ function RestLane({ h, rest }: { h: CanvasHandlers; rest: RestDef }) {
   );
 }
 
+function BeansLane({ h, beans }: { h: CanvasHandlers; beans: BeanDef[] }) {
+  const sel = h.selected === BEANS_ID;
+  const pick = (e: { stopPropagation(): void }) => {
+    e.stopPropagation();
+    h.onSelect(BEANS_ID);
+  };
+  return (
+    <section className="lane" aria-label={t('Beans')}>
+      <button className={`lane-head ${sel ? 'selected' : ''}`} onClick={pick}>
+        <span className="badge bean">beans</span>
+        <b>{beans.length}</b>
+        <Status sev={h.status[BEANS_ID]} />
+      </button>
+      <div className={`bean-list ${sel ? 'selected' : ''}`} onClick={pick} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && pick(e)}>
+        {beans.map((b) => (
+          <span key={b.id} className="bean-chip">
+            <b>{b.name || '?'}</b> <code>{b.type.split('.').pop()}</code>
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function RouteConfigLane({ h, config }: { h: CanvasHandlers; config: RouteConfigDef }) {
+  const sel = h.selected === config.id;
+  return (
+    <section className="lane config-lane" aria-label={`Route configuration ${config.configId}`}>
+      <button className={`lane-head ${sel ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), h.onSelect(config.id))}>
+        <span className="badge cfg">routeConfiguration</span>
+        <b>{config.configId}</b>
+        <span>{config.onExceptions.length} handler(s)</span>
+        <Status sev={h.status[config.id]} />
+      </button>
+      <div className="config-body">
+        {config.onExceptions.map((ex) => (
+          <ExceptionLane key={ex.id} h={h} ex={ex} />
+        ))}
+        {!config.onExceptions.length && <p className="muted" style={{ fontSize: 11, margin: 0 }}>{t('No error handlers yet — select the configuration to add one.')}</p>}
+      </div>
+    </section>
+  );
+}
+
 function RouteLane({ h, route }: { h: CanvasHandlers; route: Route }) {
   const sel = h.selected === route.id;
   return (
@@ -351,10 +406,11 @@ function RouteLane({ h, route }: { h: CanvasHandlers; route: Route }) {
       <button className={`lane-head ${sel ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), h.onSelect(route.id))}>
         <span className="badge">route</span>
         <b>{route.routeId || '(no id)'}</b>
+        {route.routeConfigurationId && <span className="badge cfg">⚑ {route.routeConfigurationId}</span>}
         {route.description && <span>{route.description}</span>}
       </button>
       <div className="flow">
-        <div className={`node from ${sel ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), h.onSelect(route.id))} role="button" tabIndex={0} aria-label="from endpoint">
+        <div className={`node from ${sel ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), h.onSelect(route.id))} role="button" tabIndex={0} aria-label={t('from endpoint')}>
           <Status sev={h.status[route.id]} />
           <div className="ico">⇢</div>
           <b>from</b>
@@ -369,7 +425,7 @@ function RouteLane({ h, route }: { h: CanvasHandlers; route: Route }) {
 function ExceptionLane({ h, ex }: { h: CanvasHandlers; ex: OnException }) {
   const sel = h.selected === ex.id;
   return (
-    <section className="lane" aria-label="Error handler">
+    <section className="lane" aria-label={t('Error handler')}>
       <button className={`lane-head ${sel ? 'selected' : ''}`} onClick={(e) => (e.stopPropagation(), h.onSelect(ex.id))}>
         <span className="badge ex">onException</span>
         <b>{ex.exceptions.map((e) => e.split('.').pop()).join(', ') || '(no exception)'}</b>
@@ -385,7 +441,7 @@ function ExceptionLane({ h, ex }: { h: CanvasHandlers; ex: OnException }) {
           <div className="ico" style={{ color: 'var(--red)' }}>
             ⚑
           </div>
-          <b>on error</b>
+          <b>{t('on error')}</b>
           <small>then</small>
         </div>
         <StepList h={h} containerId={ex.id} steps={ex.steps} />
@@ -397,6 +453,10 @@ function ExceptionLane({ h, ex }: { h: CanvasHandlers; ex: OnException }) {
 export function FlowCanvas({ file, h, zoom = 1 }: { file: CamelFile; h: CanvasHandlers; zoom?: number }) {
   return (
     <div className="canvas-inner" style={{ transform: zoom !== 1 ? `scale(${zoom})` : undefined }} onClick={() => h.onSelect(undefined)}>
+      {(file.beans ?? []).length > 0 && <BeansLane h={h} beans={file.beans!} />}
+      {(file.routeConfigurations ?? []).map((c) => (
+        <RouteConfigLane key={c.id} h={h} config={c} />
+      ))}
       {file.onExceptions.map((ex) => (
         <ExceptionLane key={ex.id} h={h} ex={ex} />
       ))}

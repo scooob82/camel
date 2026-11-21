@@ -70,15 +70,15 @@ test('unknown steps and top-level elements are preserved in YAML', () => {
     from:
       uri: direct:a
       steps:
-        - saga:
-            propagation: REQUIRED
+        - kamelet:
+            name: my-kamelet
 `;
   const f = fromYaml(src);
-  assert.equal(f.extras?.length, 1);
+  assert.equal(f.beans?.length, 1);
   assert.equal(f.routes[0].steps[0].type, 'unknown');
   const again = fromYaml(toYaml(f));
   assert.deepEqual(norm(again), norm(f));
-  assert.match(toYaml(f), /saga/);
+  assert.match(toYaml(f), /kamelet:/);
 });
 
 test('YAML errors are reported', () => {
@@ -349,4 +349,90 @@ test('contract-first: WSDL → cxf route with operation choice', () => {
   const choice = file.routes[0].steps[0] as any;
   assert.equal(choice.branches.length, 3);
   assert.equal(file.routes.length, 3);
+});
+
+const BEANS_AND_CONFIG = `- beans:
+    - name: orderService
+      type: com.example.OrderService
+      properties:
+        retries: 3
+        endpoint: http://orders
+- routeConfiguration:
+    id: shared-errors
+    onException:
+      - onException:
+          exception:
+            - java.lang.Exception
+          handled:
+            constant: "true"
+          redeliveryPolicy:
+            maximumRedeliveries: 2
+          steps:
+            - log:
+                message: config handler
+- route:
+    id: order-saga
+    routeConfigurationId: shared-errors
+    from:
+      uri: direct:order
+      steps:
+        - saga:
+            propagation: REQUIRED
+            timeout: 30000
+            compensation:
+              uri: direct:cancel
+            completion:
+              uri: direct:done
+            steps:
+              - to:
+                  uri: direct:reserve
+        - onCompletion:
+            onFailureOnly: true
+            steps:
+              - log:
+                  message: failed
+`;
+
+test('beans, routeConfiguration, saga and onCompletion round-trip', () => {
+  const m1 = fromYaml(BEANS_AND_CONFIG);
+  assert.equal(m1.beans?.[0].name, 'orderService');
+  assert.deepEqual(m1.beans?.[0].properties, [['retries', '3'], ['endpoint', 'http://orders']]);
+  assert.equal(m1.routeConfigurations?.[0].onExceptions.length, 1);
+  assert.equal(m1.routes[0].routeConfigurationId, 'shared-errors');
+  assert.deepEqual(norm(fromYaml(toYaml(m1))), norm(m1));
+  const xml = toXml(m1);
+  assert.match(xml, /^<camel xmlns/m);
+  assert.deepEqual(norm(fromXml(xml)), norm(m1));
+  const rules = validate(m1).map((i) => i.rule);
+  assert.ok(!rules.includes('error-handler'), 'route with routeConfiguration counts as handled');
+  assert.ok(rules.includes('saga-service'));
+  const java = toJava(m1, 'Orders');
+  assert.match(java, /\.saga\(\)\.propagation\(SagaPropagation\.REQUIRED\)\.timeout\(java\.time\.Duration\.ofMillis\(30000\)\)\.compensation\("direct:cancel"\)/);
+  assert.match(java, /\.onCompletion\(\)\.onFailureOnly\(\)/);
+  assert.match(java, /public static class SharedErrorsConfiguration extends RouteConfigurationBuilder/);
+  assert.match(java, /routeConfiguration\("shared-errors"\)\.onException\(java\.lang\.Exception\.class\)/);
+  assert.match(java, /\.routeConfigurationId\("shared-errors"\)/);
+});
+
+test('beans with nested properties are kept verbatim', () => {
+  const f = fromYaml(`- beans:
+    - name: ds
+      type: org.example.DataSource
+      properties:
+        pool:
+          size: 5
+`);
+  assert.equal(f.beans, undefined);
+  assert.match(toYaml(f), /pool:/);
+});
+
+test('steps with expression languages the builder does not model are preserved', () => {
+  const f = fromYaml(`- from:
+    uri: direct:a
+    steps:
+      - setBody:
+          jq: .order.id
+`);
+  assert.equal(f.routes[0].steps[0].type, 'unknown');
+  assert.match(toYaml(f), /jq: \.order\.id/);
 });

@@ -20,6 +20,7 @@ file_put_contents($configFile, '<?php return ' . var_export([
     'storage' => "$tmp/storage",
     'setup_token' => 'setup-secret',
     'limits' => ['free' => ['projects' => 3, 'versions' => 2, 'project_bytes' => 20000]],
+    'runner' => ['url' => 'http://127.0.0.1:' . ($port + 1), 'token' => 'test-runner-token-123', 'daily_runs' => ['free' => 2, 'pro' => null, 'team' => null]],
 ], true) . ';');
 putenv("CAS_CONFIG=$configFile");
 
@@ -33,6 +34,8 @@ register_shutdown_function(static function () use ($pid, $tmp) {
     }
     shell_exec('rm -rf ' . escapeshellarg($tmp));
 });
+$rpid = (int) shell_exec(sprintf('php -S 127.0.0.1:%d %s > /dev/null 2>&1 & echo $!', $port + 1, escapeshellarg(__DIR__ . '/fake-runner.php')));
+register_shutdown_function(static fn () => $rpid && posix_kill($rpid, SIGTERM));
 usleep(400000);
 
 $failures = 0;
@@ -113,7 +116,7 @@ $a = new Client($port, $tmp);
 [$s, $r] = $a->call('POST', '/v1/setup/migrate', [], ['X-Setup-Token: wrong']);
 check($s === 403, 'web migrate rejects wrong token', $r);
 [$s, $r] = $a->call('POST', '/v1/setup/migrate', [], ['X-Setup-Token: setup-secret']);
-check($s === 200 && $r['applied'] === ['001_init'], 'web migrate applies schema', $r);
+check($s === 200 && $r['applied'] === ['001_init', '002_admin_telemetry'], 'web migrate applies schema', $r);
 [$s, $r] = $a->call('GET', '/v1/health');
 check($s === 200 && $r['ok'] === true, 'health');
 [$s] = $a->call('GET', '/v1/nope');
@@ -258,6 +261,73 @@ $ch = curl_init("http://127.0.0.1:$port/api/v1/auth/logout");
 curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => 'a=b', CURLOPT_RETURNTRANSFER => true]);
 curl_exec($ch);
 check(curl_getinfo($ch, CURLINFO_RESPONSE_CODE) === 415, 'form-encoded body rejected (JSON only)');
+
+// ------------------------------------------------------------------ admin, telemetry, settings
+[$s] = $b->call('GET', '/v1/admin/stats');
+check($s === 403, 'admin endpoints need admin role');
+shell_exec(sprintf('CAS_CONFIG=%s php %s bob@example.com', escapeshellarg($configFile), escapeshellarg("$root/bin/make-admin.php")));
+[$s, $r] = $b->call('GET', '/v1/admin/stats');
+check($s === 200 && $r['users'] >= 1 && isset($r['plans'], $r['pageViews']), 'admin stats', $r);
+[$s, $r] = $b->call('GET', '/v1/admin/users?q=bob');
+check($s === 200 && $r['total'] === 1 && $r['users'][0]['email'] === 'bob@example.com' && $r['users'][0]['role'] === 'admin', 'admin user search', $r);
+$bobId = $r['users'][0]['id'];
+[$s, $r] = $b->call('PATCH', "/v1/admin/users/$bobId", ['plan' => 'pro']);
+check($s === 200 && $r['user']['plan'] === 'pro', 'admin changes plan', $r);
+[$s, $r] = $b->call('PATCH', "/v1/admin/users/$bobId", ['role' => 'user']);
+check($s === 422, 'admin cannot remove own admin role');
+[$s] = $b->call('PATCH', "/v1/admin/users/$bobId", ['plan' => 'gold']);
+check($s === 422, 'unknown plan rejected');
+[$s] = $b->call('DELETE', "/v1/admin/users/$bobId");
+check($s === 422, 'admin cannot delete self via admin API');
+
+[$s] = $anon->call('POST', '/v1/telemetry/pageview', ['path' => '/builder/p_secret123']);
+check($s === 419, 'telemetry needs CSRF like any write');
+$anon->init();
+$anon->call('POST', '/v1/telemetry/pageview', ['path' => '/builder/p_secret123']);
+$anon->call('POST', '/v1/telemetry/pageview', ['path' => '/builder/p_other']);
+[$s] = $anon->call('POST', '/v1/telemetry/error', ['message' => 'TypeError: x is undefined', 'stack' => 'at foo', 'url' => '/s/sharetoken']);
+check($s === 200, 'client error report');
+[, $r] = $b->call('GET', '/v1/admin/stats');
+$top = array_column($r['topPaths'], 'views', 'path');
+check(($top['/builder/:id'] ?? 0) === 2 && !isset($top['/builder/p_secret123']), 'page views aggregated without ids', $r['topPaths']);
+[, $r] = $b->call('GET', '/v1/admin/errors');
+check($r['errors'][0]['message'] === 'TypeError: x is undefined' && $r['errors'][0]['url'] === '/s/:id', 'admin sees client errors (tokens stripped)', $r['errors'][0] ?? null);
+
+[$s, $r] = $b->call('GET', '/v1/settings/snippets');
+check($s === 200 && $r['snippets'] === [], 'snippets empty by default');
+[$s] = $b->call('PUT', '/v1/settings/snippets', ['snippets' => [['id' => 'snip1', 'name' => 'log', 'createdAt' => 1, 'step' => ['id' => 's', 'type' => 'log', 'props' => ['message' => 'x']]]]]);
+[, $r] = $b->call('GET', '/v1/settings/snippets');
+check($s === 200 && $r['snippets'][0]['name'] === 'log', 'snippets saved to account');
+[$s] = $b->call('PUT', '/v1/settings/snippets', ['snippets' => ['a' => 1]]);
+check($s === 422, 'snippets must be a list');
+
+// ------------------------------------------------------------------ runner proxy
+[$s, $r] = $anon->call('GET', '/v1/runner/status');
+check($s === 200 && $r['available'] === true && $r['signedIn'] === false, 'runner status (anonymous)', $r);
+[$s] = $anon->call('POST', '/v1/runner/run', ['yaml' => 'x', 'input' => ['body' => '']]);
+check($s === 401, 'runner needs sign-in');
+$e = new Client($port, $tmp);
+$e->init();
+$e->call('POST', '/v1/auth/register', ['email' => 'eve@example.com', 'password' => 'eve password 77']);
+$yaml = "- route:
+    id: r
+    from:
+      uri: direct:cas-start
+      steps:
+        - log:
+            id: s_1
+            message: hi
+        - to:
+            id: s_2
+            uri: mock:out
+";
+[$s, $r] = $e->call('POST', '/v1/runner/run', ['yaml' => $yaml, 'start' => 'direct:cas-start', 'input' => ['body' => 'hello', 'headers' => ['a' => 'b']]]);
+check($s === 200 && $r['ok'] === true && array_column($r['trace'], 'nodeId') === ['s_1', 's_2'] && $r['mocks'][0]['uri'] === 'mock:out', 'run is forwarded to the runner', $r);
+[$s, $r] = $e->call('POST', '/v1/runner/transform', ['kind' => 'xslt', 'source' => '<xsl:stylesheet/>', 'input' => '<a/>', 'trace' => true]);
+check($s === 200 && $r['ok'] === true && count($r['trace']) === 2, 'transform is forwarded to the runner', $r);
+[$s] = $e->call('POST', '/v1/runner/run', ['yaml' => $yaml, 'input' => ['body' => '']]);
+[$s, $r] = $e->call('POST', '/v1/runner/run', ['yaml' => $yaml, 'input' => ['body' => '']]);
+check($s === 429, 'free plan daily run quota', $r);
 
 $log = (string) @file_get_contents("$tmp/server.log");
 check(!preg_match('/PHP (Warning|Notice|Deprecated|Fatal)/', $log), 'no PHP warnings in server log', substr($log, 0, 500));

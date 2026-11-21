@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { langStore, LANGS, setLang, t } from '../app/i18n';
 import { contextCommands, openPalette, paletteOpen, type Command } from '../app/commands';
 import { navigate, href, type Route } from '../app/router';
 import { authStore } from '../app/session';
@@ -24,8 +25,18 @@ export function Brand() {
 export function ThemeButton() {
   const theme = useStore(themeStore, (t) => t);
   return (
-    <button className="btn ghost icon" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title="Toggle theme">
+    <button className="btn ghost icon" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={t('Toggle theme')}>
       {theme === 'dark' ? '☼' : '☾'}
+    </button>
+  );
+}
+
+export function LangButton() {
+  const lang = useStore(langStore, (l) => l);
+  const next = LANGS.find((l) => l.code !== lang)!;
+  return (
+    <button className="btn ghost icon lang-btn" onClick={() => setLang(next.code)} aria-label={`${t('Language')}: ${next.label}`} title={next.label}>
+      {lang.toUpperCase()}
     </button>
   );
 }
@@ -46,7 +57,7 @@ export function AccountButton() {
   if (auth.status === 'anonymous') {
     return (
       <a className="btn ghost hide-xs" href={href('/login')}>
-        Sign in
+        {t('Sign in')}
       </a>
     );
   }
@@ -63,20 +74,22 @@ export function TopBar({ route, onSection }: { route: Route; onSection?: (id: st
     <header className="topbar">
       <div className="wrap nav">
         <Brand />
-        <nav className="navlinks" aria-label="Main">
+        <nav className="navlinks" aria-label={t('Main')}>
           {link('Product', '/', route.name === 'landing')}
           {link('Projects', '/dashboard', route.name === 'dashboard')}
+          {link('Transformation Lab', '/lab', route.name === 'lab')}
           {link('Knowledge Base', '/kb', route.name === 'kb' || route.name === 'recipe')}
           {route.name === 'landing' && onSection ? (
             <a href={href('/')} onClick={(e) => (e.preventDefault(), onSection('roadmap'))}>
-              Roadmap
+              {t('Roadmap')}
             </a>
           ) : null}
         </nav>
         <div className="navright">
-          <button className="kbd" onClick={openPalette} aria-label="Open command palette">
+          <button className="kbd" onClick={openPalette} aria-label={t('Open command palette')}>
             ⌘ K
           </button>
+          <LangButton />
           <ThemeButton />
           <AccountButton />
           <button className="btn primary" onClick={() => navigate('/dashboard')}>
@@ -97,10 +110,10 @@ export function Footer() {
           <div style={{ marginTop: 5 }}>{BRAND.disclaimer}</div>
         </div>
         <div className="footer-links">
-          <a href={href('/dashboard')}>Projects</a>
-          <a href={href('/kb')}>Knowledge Base</a>
-          <a href={href('/terms')}>Terms</a>
-          <a href={href('/privacy')}>Privacy</a>
+          <a href={href('/dashboard')}>{t('Projects')}</a>
+          <a href={href('/kb')}>{t('Knowledge Base')}</a>
+          <a href={href('/terms')}>{t('Terms')}</a>
+          <a href={href('/privacy')}>{t('Privacy')}</a>
         </div>
         <div>
           © {BRAND.year} {BRAND.display}
@@ -184,11 +197,11 @@ export function CommandPalette() {
   let lastGroup = '';
   return (
     <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="modal palette-modal" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div className="modal palette-modal" role="dialog" aria-modal="true" aria-label={t('Command palette')}>
         <input
           className="palette-input"
           autoFocus
-          placeholder="Type a command or search…"
+          placeholder={t('Type a command or search…')}
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
@@ -202,7 +215,7 @@ export function CommandPalette() {
           }}
         />
         <div className="palette-list" role="listbox">
-          {!filtered.length && <div className="palette-group">No matching commands</div>}
+          {!filtered.length && <div className="palette-group">{t('No matching commands')}</div>}
           {filtered.map((c, i) => {
             const head = c.group !== lastGroup ? <div className="palette-group">{c.group}</div> : null;
             lastGroup = c.group;

@@ -4,8 +4,12 @@ declare(strict_types=1);
 namespace Cas;
 
 use Cas\Controllers\AccountController;
+use Cas\Controllers\AdminController;
+use Cas\Controllers\SettingsController;
+use Cas\Controllers\TelemetryController;
 use Cas\Controllers\AuthController;
 use Cas\Controllers\ProjectController;
+use Cas\Controllers\RunnerController;
 use Cas\Http\HttpError;
 use Cas\Http\Request;
 use Cas\Http\Router;
@@ -33,6 +37,10 @@ final class App
         $auth = new AuthController($this);
         $account = new AccountController($this);
         $projects = new ProjectController($this);
+        $admin = new AdminController($this);
+        $settings = new SettingsController($this);
+        $telemetry = new TelemetryController($this);
+        $runner = new RunnerController($this);
 
         $r->add('GET', '/v1/health', fn () => ['ok' => true, 'time' => now()]);
         $r->add('POST', '/v1/setup/migrate', [$this, 'webMigrate']);
@@ -62,9 +70,26 @@ final class App
         $r->add('POST', '/v1/projects/{id}/share', [$projects, 'share']);
         $r->add('DELETE', '/v1/projects/{id}/share', [$projects, 'unshare']);
         $r->add('GET', '/v1/shared/{token}', [$projects, 'shared']);
+
+        $r->add('GET', '/v1/settings/snippets', [$settings, 'snippets']);
+        $r->add('PUT', '/v1/settings/snippets', [$settings, 'saveSnippets']);
+
+        $r->add('POST', '/v1/telemetry/pageview', [$telemetry, 'pageview']);
+        $r->add('POST', '/v1/telemetry/error', [$telemetry, 'error']);
+
+        $r->add('GET', '/v1/runner/status', [$runner, 'status']);
+        $r->add('POST', '/v1/runner/run', [$runner, 'run']);
+        $r->add('POST', '/v1/runner/transform', [$runner, 'transform']);
+
+        $r->add('GET', '/v1/admin/stats', [$admin, 'stats']);
+        $r->add('GET', '/v1/admin/users', [$admin, 'users']);
+        $r->add('PATCH', '/v1/admin/users/{id}', [$admin, 'updateUser']);
+        $r->add('DELETE', '/v1/admin/users/{id}', [$admin, 'deleteUser']);
+        $r->add('GET', '/v1/admin/errors', [$admin, 'errors']);
         return $r;
     }
 
+    /** @return array{int, array|object} */
     public function handle(Request $req): array
     {
         try {

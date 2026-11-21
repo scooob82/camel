@@ -7,11 +7,14 @@ interface Props {
   onChange?: (v: string) => void;
   readOnly?: boolean;
   errorLine?: number;
+  /** Highlighted line (debugger position). */
+  activeLine?: number;
   label: string;
+  minHeight?: number;
 }
 
 /** Textarea over a highlighted <pre>. Small, dependency-free and good enough for route files. */
-export function CodeEditor({ value, lang, onChange, readOnly, errorLine, label }: Props) {
+export function CodeEditor({ value, lang, onChange, readOnly, errorLine, activeLine, label, minHeight }: Props) {
   const ta = useRef<HTMLTextAreaElement>(null);
   const html = useMemo(() => highlight(value, lang) + '\n', [value, lang]);
   const lines = useMemo(() => value.split('\n').length, [value]);
@@ -30,11 +33,11 @@ export function CodeEditor({ value, lang, onChange, readOnly, errorLine, label }
   };
 
   return (
-    <div className="editor" onClick={() => ta.current?.focus()}>
+    <div className="editor" style={minHeight ? { minHeight } : undefined} onClick={() => ta.current?.focus()}>
       <div className="editor-inner">
         <div className="gutter" aria-hidden>
           {Array.from({ length: lines }, (_, i) => (
-            <div key={i} className={errorLine === i + 1 ? 'err' : undefined}>
+            <div key={i} className={errorLine === i + 1 ? 'err' : activeLine === i + 1 ? 'active' : undefined}>
               {i + 1}
             </div>
           ))}

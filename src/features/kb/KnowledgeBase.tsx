@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { t } from '../../app/i18n';
 import { href, navigate } from '../../app/router';
 import { projects, toast } from '../../app/store';
 import { RECIPES, RECIPE_BY_SLUG, type Recipe } from '../../content/recipes';
@@ -33,11 +34,11 @@ export function KnowledgeBase() {
     <main className="wrap page">
       <div className="page-head">
         <div>
-          <div className="tag">Learn · Build · Reuse</div>
-          <h1>Knowledge Base</h1>
-          <p>Practical Apache Camel recipes with YAML, XML and Java DSL — open any of them in the builder.</p>
+          <div className="tag">{t('Learn · Build · Reuse')}</div>
+          <h1>{t('Knowledge Base')}</h1>
+          <p>{t('Practical Apache Camel recipes with YAML, XML and Java DSL — open any of them in the builder.')}</p>
         </div>
-        <input className="input search-lg" placeholder="Search recipes, EIPs, components…" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the knowledge base" />
+        <input className="input search-lg" placeholder={t('Search recipes, EIPs, components…')} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t('Search the knowledge base')} />
       </div>
       <div className="chips" style={{ marginBottom: 20 }}>
         {CATEGORIES.map((c) => (
@@ -57,12 +58,12 @@ export function KnowledgeBase() {
               </div>
               <h3 style={{ marginTop: 10 }}>{r.title}</h3>
               <p>{r.summary}</p>
-              <p style={{ marginTop: 14, color: 'var(--amber)' }}>Open recipe ↗</p>
+              <p style={{ marginTop: 14, color: 'var(--amber)' }}>{t('Open recipe ↗')}</p>
             </a>
           ))}
         </div>
       ) : (
-        <EmptyState icon="⌕" title="No recipes found" text="Try another search term or category." />
+        <EmptyState icon="⌕" title={t('No recipes found')} text={t('Try another search term or category.')} />
       )}
 
       <h2 style={{ fontSize: 18, margin: '44px 0 14px' }} id="eips">
@@ -106,7 +107,7 @@ export function RecipePage({ slug }: { slug: string }) {
   if (!r || !file) {
     return (
       <main className="wrap page">
-        <EmptyState icon="?" title="Recipe not found" text="It may have been renamed." action={<a className="btn primary" href={href('/kb')}>All recipes</a>} />
+        <EmptyState icon="?" title={t('Recipe not found')} text={t('It may have been renamed.')} action={<a className="btn primary" href={href('/kb')}>{t('All recipes')}</a>} />
       </main>
     );
   }
@@ -115,7 +116,7 @@ export function RecipePage({ slug }: { slug: string }) {
   return (
     <main className="wrap page">
       <a href={href('/kb')} className="muted" style={{ fontSize: 12, textDecoration: 'none' }}>
-        ← Knowledge Base
+        {t('← Knowledge Base')}
       </a>
       <div className="kb-layout" style={{ marginTop: 14 }}>
         <article className="prose" style={{ maxWidth: 'none' }}>
@@ -130,7 +131,7 @@ export function RecipePage({ slug }: { slug: string }) {
           {r.body.map((p, i) => (
             <p key={i}>{p}</p>
           ))}
-          <h2>Example</h2>
+          <h2>{t('Example')}</h2>
           <div className="recipe-code">
             <div className="tabs" role="tablist">
               {(['yaml', 'xml', 'java'] as const).map((t) => (
@@ -147,12 +148,12 @@ export function RecipePage({ slug }: { slug: string }) {
                   )
                 }
               >
-                Copy
+                {t('Copy')}
               </button>
             </div>
             <CodeEditor value={code} lang={tab} readOnly label={`${tab} example`} />
           </div>
-          <h2>Tips</h2>
+          <h2>{t('Tips')}</h2>
           <ul className="tips">
             {r.tips.map((t, i) => (
               <li key={i}>{t}</li>
@@ -161,14 +162,14 @@ export function RecipePage({ slug }: { slug: string }) {
         </article>
         <aside className="card kb-aside">
           <button className="btn primary" style={{ width: '100%', justifyContent: 'center' }} onClick={() => openInBuilder(r)}>
-            Open in Builder ↗
+            {t('Open in Builder ↗')}
           </button>
           <p className="hint" style={{ marginTop: 10 }}>
-            Creates a new project with this recipe so you can adapt it.
+            {t('Creates a new project with this recipe so you can adapt it.')}
           </p>
           {related.length > 0 && (
             <>
-              <div className="subhead">Related</div>
+              <div className="subhead">{t('Related')}</div>
               <div style={{ display: 'grid', gap: 8 }}>
                 {related.map((x) => (
                   <a key={x.slug} className="ref" href={href(`/kb/${x.slug}`)}>

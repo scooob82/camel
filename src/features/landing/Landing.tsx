@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { t } from '../../app/i18n';
 import { navigate } from '../../app/router';
 import { appStore, projects, useStore } from '../../app/store';
 import { RECIPES } from '../../content/recipes';
@@ -35,28 +36,28 @@ export function Landing() {
               <span className="dot" /> Built for Apache Camel developers
             </div>
             <h1 className="display">
-              Build integrations.
+              {t('Build integrations.')}
               <br />
-              <em>Not complexity.</em>
+              <em>{t('Not complexity.')}</em>
             </h1>
-            <p className="lead">Design, edit and document Apache Camel routes in one focused workspace. From a visual flow to production-ready YAML, XML and Java DSL.</p>
+            <p className="lead">{t('Design, edit and document Apache Camel routes in one focused workspace. From a visual flow to production-ready YAML, XML and Java DSL.')}</p>
             <div className="hero-actions">
               <button className="btn primary" onClick={start}>
                 Start building <span aria-hidden>→</span>
               </button>
               <button className="btn" onClick={openDemo}>
-                Open the demo project
+                {t('Open the demo project')}
               </button>
             </div>
             <div className="hero-meta">
               <span>
-                ✓ <b>Visual route builder</b>
+                ✓ <b>{t('Visual route builder')}</b>
               </span>
-              <span>✓ YAML · XML · Java export</span>
-              <span>✓ Free to start, no account needed</span>
+              <span>{t('✓ YAML · XML · Java export')}</span>
+              <span>{t('✓ Free to start, no account needed')}</span>
             </div>
           </div>
-          <div className="preview" aria-label="Route Builder preview">
+          <div className="preview" aria-label={t('Route Builder preview')}>
             <div className="preview-top">
               <div className="lights">
                 <i />
@@ -64,7 +65,7 @@ export function Landing() {
                 <i />
               </div>
               <span className="mono">orders-integration.camel.yaml</span>
-              <span className="c-ok">● Saved</span>
+              <span className="c-ok">{t('● Saved')}</span>
             </div>
             <div className="card hero-preview-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 230px', overflow: 'hidden', minHeight: 275 }}>
               <div className="canvas" style={{ overflow: 'hidden', pointerEvents: 'none' }}>
@@ -82,10 +83,10 @@ export function Landing() {
         <div className="wrap">
           <div className="section-head">
             <div>
-              <div className="tag">One workspace · Complete workflow</div>
-              <h2>Everything around your routes.</h2>
+              <div className="tag">{t('One workspace · Complete workflow')}</div>
+              <h2>{t('Everything around your routes.')}</h2>
             </div>
-            <p>A practical toolkit for designing Camel integrations. Start with the builder, then explore the knowledge and workflow tools around it.</p>
+            <p>{t('A practical toolkit for designing Camel integrations. Start with the builder, then explore the knowledge and workflow tools around it.')}</p>
           </div>
           <div className="features">
             {[
@@ -95,11 +96,14 @@ export function Landing() {
               ['▤', 'Project & version history', 'Organize routes in projects, save versions and restore an earlier snapshot when needed.'],
               ['⇧', 'Export & documentation', 'Export YAML, XML, Java or a runnable Spring Boot project. Generate endpoint tables and Mermaid diagrams.'],
               ['◇', 'Knowledge Base', 'Learn EIP patterns through concise explanations, route examples and practical integration recipes.'],
+              ['◎', 'Run & Debug', 'Sandbox execution, message tracing in the diagram, breakpoints, mock endpoints and generated tests.'],
+              ['⇄', 'Transformation Lab', 'XSLT 3.0 and XQuery with Saxon, JSON/XML mapping, profiler and schema diff.'],
+              ['⚡', 'Contract-first', 'Generate routes from OpenAPI, AsyncAPI or WSDL and keep REST APIs in a visual editor.'],
             ].map(([icon, title, text]) => (
               <article className="feature" key={title}>
                 <div className="feature-icon">{icon}</div>
-                <h3>{title}</h3>
-                <p>{text}</p>
+                <h3>{t(title)}</h3>
+                <p>{t(text)}</p>
               </article>
             ))}
           </div>
@@ -110,19 +114,19 @@ export function Landing() {
         <div className="wrap">
           <div className="section-head">
             <div>
-              <div className="tag">The core of the studio</div>
-              <h2>From visual flow to real Camel DSL.</h2>
+              <div className="tag">{t('The core of the studio')}</div>
+              <h2>{t('From visual flow to real Camel DSL.')}</h2>
             </div>
-            <p>One route model. Three code views. Your diagram and source stay aligned — and the linter tells you what Camel would complain about later.</p>
+            <p>{t('One route model. Three code views. Your diagram and source stay aligned — and the linter tells you what Camel would complain about later.')}</p>
           </div>
           <div className="card" style={{ overflow: 'hidden', boxShadow: 'var(--shadow)' }}>
             <div className="studio-bar" style={{ height: 52 }}>
               <span className="crumb">
-                My projects / <b style={{ color: 'var(--text)' }}>Orders integration</b> / order-router
+                My projects / <b style={{ color: 'var(--text)' }}>{t('Orders integration')}</b> / order-router
               </span>
               <div className="bar-actions">
                 <button className="tinybtn accent" onClick={openDemo}>
-                  Open in Builder ↗
+                  {t('Open in Builder ↗')}
                 </button>
               </div>
             </div>
@@ -134,9 +138,9 @@ export function Landing() {
             </div>
             <div className="validation">
               <div className="validation-summary">
-                <strong>Route validation</strong>
-                <span className="count c-ok">✓ YAML valid</span>
-                <span className="count c-ok">✓ All nodes connected</span>
+                <strong>{t('Route validation')}</strong>
+                <span className="count c-ok">{t('✓ YAML valid')}</span>
+                <span className="count c-ok">{t('✓ All nodes connected')}</span>
                 {issues.map((i, k) => (
                   <span key={k} className={`count ${i.severity === 'error' ? 'c-err' : 'c-warn'}`}>
                     ! {i.message}
@@ -152,10 +156,10 @@ export function Landing() {
         <div className="wrap">
           <div className="section-head">
             <div>
-              <div className="tag">Learn · Build · Reuse</div>
-              <h2>Knowledge that ships with examples.</h2>
+              <div className="tag">{t('Learn · Build · Reuse')}</div>
+              <h2>{t('Knowledge that ships with examples.')}</h2>
             </div>
-            <p>Understand a pattern, inspect a working route and open it directly in the builder.</p>
+            <p>{t('Understand a pattern, inspect a working route and open it directly in the builder.')}</p>
           </div>
           <div className="features">
             {RECIPES.slice(0, 3).map((r) => (
@@ -165,7 +169,7 @@ export function Landing() {
                 </div>
                 <h3 style={{ marginTop: 10 }}>{r.title}</h3>
                 <p>{r.summary}</p>
-                <p style={{ marginTop: 14, color: 'var(--amber)' }}>Open recipe ↗</p>
+                <p style={{ marginTop: 14, color: 'var(--amber)' }}>{t('Open recipe ↗')}</p>
               </a>
             ))}
           </div>
@@ -176,26 +180,24 @@ export function Landing() {
         <div className="wrap">
           <div className="section-head">
             <div>
-              <div className="tag">The roadmap</div>
-              <h2>More power is on the way.</h2>
+              <div className="tag">{t('The roadmap')}</div>
+              <h2>{t('More power is on the way.')}</h2>
             </div>
-            <p>The MVP focuses on route design and export. Advanced runtime tools will follow as separate modules.</p>
+            <p>{t('Run & Debug and the Transformation Lab are available today. These modules come next.')}</p>
           </div>
           <div className="features">
             {[
-              ['◎', 'Run & Debug', 'Sandbox execution, message tracing in the diagram, breakpoints, mock endpoints and generated tests.'],
-              ['⇄', 'Transformation Lab', 'XSLT 3.0 and XQuery with Saxon, JSON/XML mapping, profiler and schema diff.'],
               ['↗', 'Migration Center', 'OSB, MuleSoft, Fuse and Camel 2/3 → 4 assessment and migration assistance.'],
               ['✳', 'AI Assistant', 'Generate routes, explain integrations and analyse stack traces with project context.'],
-              ['⌘', 'Team Workspace', 'Accounts, cloud sync, shared libraries, reviews and team permissions.'],
+              ['⌘', 'Team Workspace', 'Shared projects and libraries, reviews, team permissions and SSO.'],
               ['▦', 'Marketplace', 'Reusable route templates, Kamelets and community integrations.'],
             ].map(([icon, title, text]) => (
               <article className="feature soon" key={title}>
                 <div className="feature-icon">{icon}</div>
                 <h3>
-                  {title} <span className="pill soon">COMING SOON</span>
+                  {t(title)} <span className="pill soon">{t('COMING SOON')}</span>
                 </h3>
-                <p>{text}</p>
+                <p>{t(text)}</p>
               </article>
             ))}
           </div>
@@ -206,12 +208,12 @@ export function Landing() {
         <div className="wrap">
           <div className="cta">
             <div>
-              <div className="tag">Start with the essentials</div>
-              <h2>Your next Camel route starts here.</h2>
-              <p>Design visually. Keep control of your code. Export when you're ready.</p>
+              <div className="tag">{t('Start with the essentials')}</div>
+              <h2>{t('Your next Camel route starts here.')}</h2>
+              <p>{t('Design visually. Keep control of your code. Export when you\'re ready.')}</p>
             </div>
             <button className="btn primary" onClick={start}>
-              Open the Studio →
+              {t('Open the Studio →')}
             </button>
           </div>
         </div>

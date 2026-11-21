@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.4.4</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.camelstudio</groupId>
+    <artifactId>studio-runner</artifactId>
+    <version>0.1.0</version>
+    <name>Studio runner (sandbox for Run &amp; Debug and Saxon transformations)</name>
+
+    <properties>
+        <java.version>21</java.version>
+        <camel.version>4.10.0</camel.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.camel</groupId>
+                <artifactId>camel-bom</artifactId>
+                <version>${camel.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Camel runtime used for sandbox runs (a fresh CamelContext per run, not Spring-managed) -->
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-core-engine</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-core-languages</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-yaml-dsl</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-direct</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-seda</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-log</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-mock</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-bean</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-jackson</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-jacksonxml</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-csv</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-base64</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-jsonpath</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-xpath</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-saxon</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-xslt-saxon</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-validator</artifactId></dependency>
+        <dependency><groupId>org.apache.camel</groupId><artifactId>camel-resilience4j</artifactId></dependency>
+
+        <!-- XSLT 3.0 / XQuery 3.1 for the Transformation Lab (version managed through camel-saxon) -->
+        <dependency><groupId>net.sf.saxon</groupId><artifactId>Saxon-HE</artifactId></dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
