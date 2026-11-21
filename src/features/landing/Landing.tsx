@@ -33,7 +33,7 @@ export function Landing() {
         <div className="wrap hero-grid">
           <div>
             <div className="eyebrow">
-              <span className="dot" /> Built for Apache Camel developers
+              <span className="dot" /> {t('Built for Apache Camel developers')}
             </div>
             <h1 className="display">
               {t('Build integrations.')}
@@ -43,7 +43,7 @@ export function Landing() {
             <p className="lead">{t('Design, edit and document Apache Camel routes in one focused workspace. From a visual flow to production-ready YAML, XML and Java DSL.')}</p>
             <div className="hero-actions">
               <button className="btn primary" onClick={start}>
-                Start building <span aria-hidden>→</span>
+                {t('Start building')} <span aria-hidden>→</span>
               </button>
               <button className="btn" onClick={openDemo}>
                 {t('Open the demo project')}

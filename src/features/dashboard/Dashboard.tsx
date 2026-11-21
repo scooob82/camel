@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { t } from '../../app/i18n';
+import { locale, plural, t } from '../../app/i18n';
 import { href, navigate } from '../../app/router';
 import { authStore } from '../../app/session';
 import { appStore, importLocalProjects, localProjects, projects, toast, useStore, type Project } from '../../app/store';
@@ -12,12 +12,12 @@ import { fromYaml } from '../../core/yaml';
 import { Confirm, EmptyState, Modal } from '../../ui/Modal';
 import { pickTextFile } from '../builder/download';
 
-function ago(t: number): string {
-  const s = Math.round((Date.now() - t) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return new Date(t).toLocaleDateString();
+function ago(ts: number): string {
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return t('edited just now');
+  if (s < 3600) return t('edited {n} min ago', { n: Math.floor(s / 60) });
+  if (s < 86400) return t('edited {n} h ago', { n: Math.floor(s / 3600) });
+  return t('edited {date}', { date: new Date(ts).toLocaleDateString(locale()) });
 }
 
 function MiniFlow({ p }: { p: Project }) {
@@ -140,10 +140,10 @@ export function Dashboard() {
           <h1>{t('Projects')}</h1>
           <p>
             {mode === 'remote' ? (
-              <>Synced to your account{auth.user ? ` (${auth.user.email})` : ''} — available on every device.</>
+              <>{t('Synced to your account ({email}) — available on every device.', { email: auth.user?.email ?? '' })}</>
             ) : auth.status === 'anonymous' ? (
               <>
-                Saved in this browser. <a href={href('/register')}>{t('Create a free account')}</a> or <a href={href('/login')}>{t('sign in')}</a> to sync across devices.
+                {t('Saved in this browser.')} <a href={href('/register')}>{t('Create a free account')}</a> {t('or')} <a href={href('/login')}>{t('sign in')}</a> {t('to sync across devices.')}
               </>
             ) : (
               <>{t('Saved in this browser.')}</>
@@ -182,7 +182,7 @@ export function Dashboard() {
       )}
       {auth.user && !auth.user.emailVerified && (
         <div className="banner subtle">
-          <span>Please confirm your e-mail address — we sent a link to {auth.user.email}.</span>
+          <span>{t('Please confirm your e-mail address — we sent a link to {email}.', { email: auth.user.email })}</span>
           <a className="btn sm" href={href('/account')}>
             {t('Resend')}
           </a>
@@ -243,12 +243,12 @@ export function Dashboard() {
               <MiniFlow p={p} />
               <div className="meta">
                 <span>
-                  {p.file.routes.length} route{p.file.routes.length === 1 ? '' : 's'}
+                  {plural(p.file.routes.length, '{n} route', '{n} routes')}
                 </span>
                 <span>
-                  {p.versions.length} version{p.versions.length === 1 ? '' : 's'}
+                  {plural(p.versions.length, '{n} version', '{n} versions')}
                 </span>
-                <span>edited {ago(p.updatedAt)}</span>
+                <span>{ago(p.updatedAt)}</span>
               </div>
               <div className="actions">
                 <button className="tinybtn" onClick={() => navigate(`/builder/${p.id}`)}>

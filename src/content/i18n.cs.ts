@@ -11,6 +11,8 @@ export const CS: Record<string, string> = {
   'sign in': 'přihlas se',
   'Sign out': 'Odhlásit se',
   'Toggle theme': 'Přepnout vzhled',
+  'Switch to light mode': 'Přepnout na světlý režim',
+  'Switch to dark mode': 'Přepnout na tmavý režim',
   Language: 'Jazyk',
   Main: 'Hlavní navigace',
   'Open command palette': 'Otevřít paletu příkazů',
@@ -41,7 +43,7 @@ export const CS: Record<string, string> = {
   'Back to projects': 'Zpět na projekty',
 
   // ---- landing
-  'Build integrations.': 'Stav integrace.',
+  'Build integrations.': 'Stavěj integrace.',
   'Not complexity.': 'Ne složitost.',
   'Design, edit and document Apache Camel routes in one focused workspace. From a visual flow to production-ready YAML, XML and Java DSL.':
     'Navrhuj, upravuj a dokumentuj Apache Camel routy v jednom soustředěném prostředí. Od vizuálního toku až po YAML, XML a Java DSL připravené pro produkci.',
@@ -103,6 +105,17 @@ export const CS: Record<string, string> = {
   'Run & Debug and the Transformation Lab are available today. These modules come next.': 'Run & Debug a Transformační laboratoř jsou k dispozici už dnes. Tyto moduly přijdou jako další.',
   'Reusable route templates, Kamelets and community integrations.': 'Znovupoužitelné šablony rout, Kamelety a integrace od komunity.',
 
+  'Built for Apache Camel developers': 'Pro vývojáře Apache Camel',
+  'New route': 'Nová routa',
+  'Open Knowledge Base': 'Otevřít znalostní bázi',
+  Navigate: 'Navigace',
+  'Go to home page': 'Na úvodní stránku',
+  Create: 'Vytvořit',
+  Preferences: 'Nastavení',
+  'Toggle light / dark mode': 'Přepnout světlý / tmavý režim',
+  'Open project: {name}': 'Otevřít projekt: {name}',
+  'Recipe: {name}': 'Recept: {name}',
+
   // ---- dashboard
   Workspace: 'Pracovní prostor',
   'New project': 'Nový projekt',
@@ -140,6 +153,18 @@ export const CS: Record<string, string> = {
   'Project duplicated': 'Projekt zduplikován',
   'Server not reachable — working with projects in this browser.': 'Server není dostupný — pracuješ s projekty v tomto prohlížeči.',
   'This project was changed in another tab or device — loaded the latest version.': 'Projekt se změnil v jiném panelu nebo zařízení — načetl jsem nejnovější verzi.',
+
+  'edited just now': 'upraveno právě teď',
+  'edited {n} min ago': 'upraveno před {n} min',
+  'edited {n} h ago': 'upraveno před {n} h',
+  'edited {date}': 'upraveno {date}',
+  'Synced to your account ({email}) — available on every device.': 'Synchronizováno s tvým účtem ({email}) — dostupné na každém zařízení.',
+  or: 'nebo',
+  'to sync across devices.': 'a projekty se budou synchronizovat mezi zařízeními.',
+  'Please confirm your e-mail address — we sent a link to {email}.': 'Potvrď prosím svůj e-mail — poslali jsme odkaz na {email}.',
+  '{n} version': '{n} verze',
+  '{n} versions': '{n} verze',
+  '{n} versions|many': '{n} verzí',
 
   // ---- builder chrome
   'Project name': 'Název projektu',

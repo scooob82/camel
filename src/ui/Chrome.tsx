@@ -25,7 +25,7 @@ export function Brand() {
 export function ThemeButton() {
   const theme = useStore(themeStore, (t) => t);
   return (
-    <button className="btn ghost icon" onClick={toggleTheme} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} title={t('Toggle theme')}>
+    <button className="btn ghost icon" onClick={toggleTheme} aria-label={t(theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode')} title={t('Toggle theme')}>
       {theme === 'dark' ? '☼' : '☾'}
     </button>
   );
@@ -67,7 +67,7 @@ export function AccountButton() {
 export function TopBar({ route, onSection }: { route: Route; onSection?: (id: string) => void }) {
   const link = (label: string, path: string, active: boolean) => (
     <a className={active ? 'active' : undefined} href={href(path)}>
-      {label}
+      {t(label)}
     </a>
   );
   return (
@@ -93,7 +93,7 @@ export function TopBar({ route, onSection }: { route: Route; onSection?: (id: st
           <ThemeButton />
           <AccountButton />
           <button className="btn primary" onClick={() => navigate('/dashboard')}>
-            Open Studio <span aria-hidden>↗</span>
+            {t('Open Studio')} <span aria-hidden>↗</span>
           </button>
         </div>
       </div>
@@ -184,7 +184,7 @@ export function CommandPalette() {
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     if (!s) return commands.filter((c) => c.group !== 'Knowledge Base');
-    return commands.filter((c) => `${c.title} ${c.group}`.toLowerCase().includes(s));
+    return commands.filter((c) => `${c.title} ${c.group} ${t(c.title)}`.toLowerCase().includes(s));
   }, [q, commands]);
 
   if (!open) return null;
@@ -217,13 +217,13 @@ export function CommandPalette() {
         <div className="palette-list" role="listbox">
           {!filtered.length && <div className="palette-group">{t('No matching commands')}</div>}
           {filtered.map((c, i) => {
-            const head = c.group !== lastGroup ? <div className="palette-group">{c.group}</div> : null;
+            const head = c.group !== lastGroup ? <div className="palette-group">{t(c.group)}</div> : null;
             lastGroup = c.group;
             return (
               <div key={c.id}>
                 {head}
                 <button role="option" aria-selected={i === active} className={`palette-item ${i === active ? 'active' : ''}`} onMouseEnter={() => setActive(i)} onClick={() => run(c)}>
-                  <span>{c.title}</span>
+                  <span>{c.title.startsWith('Open project: ') ? t('Open project: {name}', { name: c.title.slice(14) }) : c.title.startsWith('Recipe: ') ? t('Recipe: {name}', { name: c.title.slice(8) }) : t(c.title)}</span>
                   {c.shortcut && <span className="kbd">{c.shortcut}</span>}
                 </button>
               </div>
