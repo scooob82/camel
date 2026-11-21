@@ -52,6 +52,10 @@ rsync -avz --delete dist/ user@host:/path/to/www/
 | Accounts, cloud sync (Laravel API) | ⏳ next milestone |
 | Run & Debug, Transformation Lab, Migration Center, AI | ⏳ roadmap |
 
+## Roadmap
+
+Stav projektu a co zbývá: [docs/ROADMAP.md](docs/ROADMAP.md)
+
 ## Architecture
 
 ```
